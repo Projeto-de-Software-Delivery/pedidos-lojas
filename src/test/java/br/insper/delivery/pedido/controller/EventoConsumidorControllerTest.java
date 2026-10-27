@@ -214,15 +214,38 @@ class EventoConsumidorControllerTest {
 				.content("{\"entregadorId\":\"outro\"}"))
 				.andExpect(status().isForbidden());
 
-		mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
+		MvcResult retirada = mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"entregadorId\":\"" + entregadorId + "\"}"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.status").value("EM_ENTREGA"));
+				.andExpect(jsonPath("$.status").value("EM_ENTREGA"))
+				.andReturn();
 
 		mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"entregadorId\":\"" + entregadorId + "\"}"))
 				.andExpect(status().isConflict());
+
+		Matcher matcher = Pattern.compile("\"pin\":\"(\\d{4})\"")
+				.matcher(retirada.getResponse().getContentAsString());
+		matcher.find();
+		String pin = matcher.group(1);
+		String pinErrado = pin.equals("0000") ? "1111" : "0000";
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/entregar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\",\"pin\":\"12\"}"))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/entregar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\",\"pin\":\"" + pinErrado + "\"}"))
+				.andExpect(status().isUnprocessableContent());
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/entregar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\",\"pin\":\"" + pin + "\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("ENTREGUE"));
 	}
 }

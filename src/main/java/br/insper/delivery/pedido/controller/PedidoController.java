@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import br.insper.delivery.pedido.dto.AceitarPedidoRequest;
 import br.insper.delivery.pedido.dto.CriarPedidoRequest;
+import br.insper.delivery.pedido.dto.EntregarPedidoRequest;
 import br.insper.delivery.pedido.dto.PedidoResponse;
 import br.insper.delivery.pedido.dto.PedidoStatusResponse;
 import br.insper.delivery.pedido.dto.RetirarPedidoRequest;
@@ -59,6 +60,13 @@ public class PedidoController {
 	public ResponseEntity<PedidoResponse> retirar(@PathVariable Long id,
 			@Valid @RequestBody RetirarPedidoRequest request) {
 		return ResponseEntity.ok(pedidoService.retirar(id, request.entregadorId()));
+	}
+
+	/** Valida o PIN, transiciona pra ENTREGUE, libera o entregador e publica pedido.entregue. */
+	@PostMapping("/pedidos/{id}/entregar")
+	public ResponseEntity<PedidoResponse> entregar(@PathVariable Long id,
+			@Valid @RequestBody EntregarPedidoRequest request) {
+		return ResponseEntity.ok(pedidoService.entregar(id, request.entregadorId(), request.pin()));
 	}
 
 	@GetMapping("/clientes/{clienteId}/pedidos")
