@@ -37,6 +37,8 @@ import br.insper.delivery.pedido.event.EntregaAceitaEvent;
 import br.insper.delivery.pedido.event.EntregaAceitaEvento;
 import br.insper.delivery.pedido.event.PedidoCriadoEvent;
 import br.insper.delivery.pedido.event.PedidoCriadoEvento;
+import br.insper.delivery.pedido.event.PedidoEntregueEvent;
+import br.insper.delivery.pedido.event.PedidoEntregueEvento;
 import br.insper.delivery.pedido.event.PedidoRetiradoEvent;
 import br.insper.delivery.pedido.event.PedidoRetiradoEvento;
 import br.insper.delivery.pedido.event.PedidoValidadoEvent;
@@ -186,6 +188,32 @@ public class PedidoService {
 			entregadorClient.atualizarStatus(response.entregadorId(), ENTREGADOR_STATUS_DISPONIVEL);
 		}
 		return response;
+	}
+
+	/**
+	 * App do entregador: finaliza a corrida se o PIN bater com o do pedido, libera o entregador e
+	 * publica pedido.entregue. PIN errado não altera nada (422).
+	 */
+	public PedidoResponse entregar(Long pedidoId, String entregadorId, String pin) {
+		Pedido pedido = buscarEntidadeDoEntregador(pedidoId, entregadorId);
+		if (pedido.getStatus() != PedidoStatus.EM_ENTREGA) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Pedido está em " + pedido.getStatus() + ", esperado EM_ENTREGA para entregar");
+		}
+		if (!pedido.getPin().equals(pin)) {
+			throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Código de entrega incorreto");
+		}
+		pedido.transicionar(PedidoStatus.EM_ENTREGA, PedidoStatus.ENTREGUE);
+		Pedido salvo = pedidoRepository.save(pedido);
+		log.info("Pedido {} entregue pelo entregador {} com PIN validado", salvo.getId(), entregadorId);
+		entregadorClient.atualizarStatus(entregadorId, ENTREGADOR_STATUS_DISPONIVEL);
+
+		PedidoEntregueDados dados = new PedidoEntregueDados(String.valueOf(salvo.getId()), salvo.getEntregaId(),
+				entregadorId, Instant.now(), true, String.valueOf(salvo.getClienteId()),
+				String.valueOf(salvo.getLojaId()));
+		eventPublisher.publishEvent(new PedidoEntregueEvent(this, PedidoEntregueEvento.de(dados)));
+
+		return paraResponse(salvo, itemPedidoRepository.findByPedidoId(salvo.getId()));
 	}
 
 	public List<PedidoResponse> listarPorCliente(Long clienteId) {

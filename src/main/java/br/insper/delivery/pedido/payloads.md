@@ -65,5 +65,9 @@ json
 "entregaId": "88",
 "entregadorId": "31",
 "entregueEm": "2026-09-30T14:45:00Z",
-"pinValidado": true
+"pinValidado": true,
+"clienteId": "45",
+"lojaId": "7"
 }
+
+Mesmo acréscimo de clienteId e lojaId do pedido.retirado. Publicado por POST /pedidos/{id}/entregar; no fallback /eventos/pedido-entregue eles são opcionais.
