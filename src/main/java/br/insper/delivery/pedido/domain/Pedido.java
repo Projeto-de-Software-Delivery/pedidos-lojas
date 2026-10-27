@@ -44,6 +44,10 @@ public class Pedido {
 
 	private String entregadorId;
 
+	// id da corrida, gerado na atribuição do entregador; vai nos eventos entrega.aceita, pedido.retirado e
+	// pedido.entregue
+	private String entregaId;
+
 	protected Pedido() {
 	}
 
@@ -105,8 +109,13 @@ public class Pedido {
 		return entregadorId;
 	}
 
-	public void atribuirEntregador(String entregadorId) {
+	public String getEntregaId() {
+		return entregaId;
+	}
+
+	public void atribuirEntregador(String entregadorId, String entregaId) {
 		this.entregadorId = entregadorId;
+		this.entregaId = entregaId;
 	}
 
 	/** @throws IllegalStateException se o pedido não estiver em statusEsperado. */

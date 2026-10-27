@@ -50,8 +50,12 @@ json
 "entregaId": "88",
 "entregadorId": "31",
 "retiradoEm": "2026-09-30T14:25:00Z",
-"etaEntregaMin": 18
+"etaEntregaMin": 18,
+"clienteId": "45",
+"lojaId": "7"
 }
+
+clienteId e lojaId foram acrescentados (sem mudar a versão, campos novos não quebram quem já consome) para o serviço de notificações saber quem avisar. Publicado por POST /pedidos/{id}/retirar; no fallback /eventos/pedido-retirado eles são opcionais.
 
 pedido.entregue (PIN validado e entrega finalizada)
 

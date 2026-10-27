@@ -8,12 +8,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import br.insper.delivery.pedido.dto.AceitarPedidoRequest;
 import br.insper.delivery.pedido.dto.CriarPedidoRequest;
 import br.insper.delivery.pedido.dto.PedidoResponse;
 import br.insper.delivery.pedido.dto.PedidoStatusResponse;
+import br.insper.delivery.pedido.dto.RetirarPedidoRequest;
 import br.insper.delivery.pedido.service.PedidoService;
 import jakarta.validation.Valid;
 
@@ -44,6 +46,19 @@ public class PedidoController {
 	@GetMapping("/pedidos/{id}/status")
 	public ResponseEntity<PedidoStatusResponse> buscarStatus(@PathVariable Long id) {
 		return ResponseEntity.ok(new PedidoStatusResponse(id, pedidoService.buscarStatus(id)));
+	}
+
+	/** App do entregador: corridas atribuídas a ele. */
+	@GetMapping("/pedidos")
+	public ResponseEntity<List<PedidoResponse>> listarPorEntregador(@RequestParam String entregadorId) {
+		return ResponseEntity.ok(pedidoService.listarPorEntregador(entregadorId));
+	}
+
+	/** Entregador pegou o pedido na loja: transiciona pra EM_ENTREGA e publica pedido.retirado. */
+	@PostMapping("/pedidos/{id}/retirar")
+	public ResponseEntity<PedidoResponse> retirar(@PathVariable Long id,
+			@Valid @RequestBody RetirarPedidoRequest request) {
+		return ResponseEntity.ok(pedidoService.retirar(id, request.entregadorId()));
 	}
 
 	@GetMapping("/clientes/{clienteId}/pedidos")

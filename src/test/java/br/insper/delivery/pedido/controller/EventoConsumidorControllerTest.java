@@ -1,5 +1,6 @@
 package br.insper.delivery.pedido.controller;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -184,6 +185,44 @@ class EventoConsumidorControllerTest {
 		mockMvc.perform(post("/eventos/pedido-retirado")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(envelope("pedido.retirado", pedidoRetiradoData(pedidoId))))
+				.andExpect(status().isConflict());
+	}
+
+	@Test
+	void appDoEntregadorListaACorridaERetiraOPedido() throws Exception {
+		Long pedidoId = criarPedido();
+		// id único: o banco H2 é compartilhado entre os testes da classe
+		String entregadorId = UUID.randomUUID().toString();
+		mockMvc.perform(post("/eventos/pedido-validado")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(envelope("pedido.validado", pedidoValidadoData(pedidoId))))
+				.andExpect(status().isOk());
+		mockMvc.perform(post("/eventos/entrega-aceita")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(envelope("entrega.aceita", "{\"pedidoId\":\"" + pedidoId + "\",\"entregaId\":\"88\","
+						+ "\"entregadorId\":\"" + entregadorId + "\",\"nomeEntregador\":\"Joao\","
+						+ "\"veiculo\":\"moto\",\"etaRetiradaMin\":12}")))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(get("/pedidos").param("entregadorId", entregadorId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].id").value(pedidoId));
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"outro\"}"))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("EM_ENTREGA"));
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\"}"))
 				.andExpect(status().isConflict());
 	}
 }
