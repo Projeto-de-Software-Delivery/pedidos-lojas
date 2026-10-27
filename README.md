@@ -79,6 +79,7 @@ não há acesso direto a dados de outro serviço, só via API ou evento.
 | Produto | `/produtos` | CRUD de produtos (vinculados a uma loja), com controle de estoque. |
 | Carrinho | `/clientes/{clienteId}/carrinho` | Adicionar/remover itens do carrinho de um cliente. |
 | Pedido | `/clientes/{clienteId}/pedidos`, `/pedidos/{id}`, `/lojas/{lojaId}/pedidos/...` | Criação, consulta e ciclo de vida do pedido (aceitar/recusar pela loja). |
+| App do entregador | `/pedidos?entregadorId=`, `/pedidos/{id}/retirar`, `/pedidos/{id}/entregar` | Corridas atribuídas ao entregador, confirmação de retirada na loja e finalização com PIN. |
 | Eventos | `/eventos/*` | Fallback HTTP para aplicar transições de status vindas de outros serviços quando a integração automática não se aplica. |
 
 Lista completa de rotas e contratos: veja a [documentação OpenAPI](#documentação-da-api).
@@ -120,8 +121,8 @@ completo em [`src/main/java/br/insper/delivery/pedido/payloads.md`](src/main/jav
 | `pedido.criado` | Cliente cria um pedido. |
 | `pedido.validado` | Loja aceita o pedido e baixa o estoque. |
 | `entrega.aceita` | Um entregador é atribuído à corrida (automático ou via fallback HTTP). |
-| `pedido.retirado` | Entregador retira o pedido na loja *(consumido via `/eventos/pedido-retirado`)*. |
-| `pedido.entregue` | Entrega concluída e PIN validado *(consumido via `/eventos/pedido-entregue`)*. |
+| `pedido.retirado` | Entregador confirma a retirada na loja (`POST /pedidos/{id}/retirar`). |
+| `pedido.entregue` | Entregador finaliza com o PIN do cliente (`POST /pedidos/{id}/entregar`). |
 
 Todo evento segue o envelope:
 

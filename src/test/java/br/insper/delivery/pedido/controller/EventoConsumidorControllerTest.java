@@ -1,5 +1,6 @@
 package br.insper.delivery.pedido.controller;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -185,5 +186,66 @@ class EventoConsumidorControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(envelope("pedido.retirado", pedidoRetiradoData(pedidoId))))
 				.andExpect(status().isConflict());
+	}
+
+	@Test
+	void appDoEntregadorListaACorridaERetiraOPedido() throws Exception {
+		Long pedidoId = criarPedido();
+		// id único: o banco H2 é compartilhado entre os testes da classe
+		String entregadorId = UUID.randomUUID().toString();
+		mockMvc.perform(post("/eventos/pedido-validado")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(envelope("pedido.validado", pedidoValidadoData(pedidoId))))
+				.andExpect(status().isOk());
+		mockMvc.perform(post("/eventos/entrega-aceita")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(envelope("entrega.aceita", "{\"pedidoId\":\"" + pedidoId + "\",\"entregaId\":\"88\","
+						+ "\"entregadorId\":\"" + entregadorId + "\",\"nomeEntregador\":\"Joao\","
+						+ "\"veiculo\":\"moto\",\"etaRetiradaMin\":12}")))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(get("/pedidos").param("entregadorId", entregadorId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].id").value(pedidoId));
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"outro\"}"))
+				.andExpect(status().isForbidden());
+
+		MvcResult retirada = mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("EM_ENTREGA"))
+				.andReturn();
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/retirar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\"}"))
+				.andExpect(status().isConflict());
+
+		Matcher matcher = Pattern.compile("\"pin\":\"(\\d{4})\"")
+				.matcher(retirada.getResponse().getContentAsString());
+		matcher.find();
+		String pin = matcher.group(1);
+		String pinErrado = pin.equals("0000") ? "1111" : "0000";
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/entregar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\",\"pin\":\"12\"}"))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/entregar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\",\"pin\":\"" + pinErrado + "\"}"))
+				.andExpect(status().isUnprocessableContent());
+
+		mockMvc.perform(post("/pedidos/" + pedidoId + "/entregar")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"entregadorId\":\"" + entregadorId + "\",\"pin\":\"" + pin + "\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("ENTREGUE"));
 	}
 }

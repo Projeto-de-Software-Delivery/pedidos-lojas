@@ -14,6 +14,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -41,6 +42,8 @@ import br.insper.delivery.pedido.dto.PedidoRetiradoDados;
 import br.insper.delivery.pedido.dto.PedidoValidadoDados;
 import br.insper.delivery.pedido.event.EntregaAceitaEvent;
 import br.insper.delivery.pedido.event.PedidoCriadoEvent;
+import br.insper.delivery.pedido.event.PedidoEntregueEvent;
+import br.insper.delivery.pedido.event.PedidoRetiradoEvent;
 import br.insper.delivery.pedido.event.PedidoValidadoEvent;
 import br.insper.delivery.pedido.repository.ItemPedidoRepository;
 import br.insper.delivery.pedido.repository.PedidoRepository;
@@ -325,7 +328,7 @@ class PedidoServiceTest {
 		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
 		when(pedidoRepository.save(pedido)).thenReturn(pedido);
 		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
-		PedidoRetiradoDados dados = new PedidoRetiradoDados("1", "88", "31", Instant.now(), 18);
+		PedidoRetiradoDados dados = new PedidoRetiradoDados("1", "88", "31", Instant.now(), 18, null, null);
 
 		PedidoResponse response = pedidoService.aplicarPedidoRetirado(dados);
 
@@ -336,7 +339,7 @@ class PedidoServiceTest {
 	void aplicarPedidoRetiradoDeveLancarConflitoQuandoPedidoNaoEstaEntregaAceita() {
 		Pedido pedido = new Pedido(1L, 2L, new BigDecimal("31.80"), "Rua B, 2", -23.5, -46.6);
 		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
-		PedidoRetiradoDados dados = new PedidoRetiradoDados("1", "88", "31", Instant.now(), 18);
+		PedidoRetiradoDados dados = new PedidoRetiradoDados("1", "88", "31", Instant.now(), 18, null, null);
 
 		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
 				ResponseStatusException.class, () -> pedidoService.aplicarPedidoRetirado(dados));
@@ -344,17 +347,144 @@ class PedidoServiceTest {
 		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 	}
 
+	private Pedido pedidoComEntregaAceita() {
+		Pedido pedido = new Pedido(1L, 2L, new BigDecimal("31.80"), "Rua B, 2", -23.5, -46.6);
+		pedido.transicionar(PedidoStatus.AGUARDANDO_VALIDACAO, PedidoStatus.VALIDADO);
+		pedido.atribuirEntregador("31", "88");
+		pedido.transicionar(PedidoStatus.VALIDADO, PedidoStatus.ENTREGA_ACEITA);
+		return pedido;
+	}
+
+	@Test
+	void retirarDeveTransicionarParaEmEntregaEPublicarPedidoRetirado() {
+		Pedido pedido = pedidoComEntregaAceita();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+		when(pedidoRepository.save(pedido)).thenReturn(pedido);
+		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
+
+		PedidoResponse response = pedidoService.retirar(1L, "31");
+
+		assertThat(response.status()).isEqualTo(PedidoStatus.EM_ENTREGA);
+		ArgumentCaptor<PedidoRetiradoEvent> captor = ArgumentCaptor.forClass(PedidoRetiradoEvent.class);
+		verify(eventPublisher).publishEvent(captor.capture());
+		PedidoRetiradoDados dados = captor.getValue().getEvento().data();
+		assertThat(captor.getValue().getEvento().eventType()).isEqualTo("pedido.retirado");
+		assertThat(dados.entregaId()).isEqualTo("88");
+		assertThat(dados.entregadorId()).isEqualTo("31");
+		assertThat(dados.clienteId()).isEqualTo("1");
+		assertThat(dados.lojaId()).isEqualTo("2");
+	}
+
+	@Test
+	void retirarDeveLancarForbiddenQuandoPedidoEDeOutroEntregador() {
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedidoComEntregaAceita()));
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.retirar(1L, "99"));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+		org.mockito.Mockito.verifyNoInteractions(eventPublisher);
+	}
+
+	@Test
+	void retirarDeveLancarConflitoQuandoPedidoNaoEstaEntregaAceita() {
+		Pedido pedido = pedidoComEntregaAceita();
+		pedido.transicionar(PedidoStatus.ENTREGA_ACEITA, PedidoStatus.EM_ENTREGA);
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.retirar(1L, "31"));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+		org.mockito.Mockito.verifyNoInteractions(eventPublisher);
+	}
+
+	private Pedido pedidoEmEntrega() {
+		Pedido pedido = pedidoComEntregaAceita();
+		pedido.transicionar(PedidoStatus.ENTREGA_ACEITA, PedidoStatus.EM_ENTREGA);
+		return pedido;
+	}
+
+	@Test
+	void entregarComPinCorretoDeveFinalizarLiberarEntregadorEPublicarPedidoEntregue() {
+		Pedido pedido = pedidoEmEntrega();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+		when(pedidoRepository.save(pedido)).thenReturn(pedido);
+		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
+
+		PedidoResponse response = pedidoService.entregar(1L, "31", pedido.getPin());
+
+		assertThat(response.status()).isEqualTo(PedidoStatus.ENTREGUE);
+		verify(entregadorClient).atualizarStatus("31", "DISPONIVEL");
+		ArgumentCaptor<PedidoEntregueEvent> captor = ArgumentCaptor.forClass(PedidoEntregueEvent.class);
+		verify(eventPublisher).publishEvent(captor.capture());
+		PedidoEntregueDados dados = captor.getValue().getEvento().data();
+		assertThat(captor.getValue().getEvento().eventType()).isEqualTo("pedido.entregue");
+		assertThat(dados.entregaId()).isEqualTo("88");
+		assertThat(dados.pinValidado()).isTrue();
+		assertThat(dados.clienteId()).isEqualTo("1");
+		assertThat(dados.lojaId()).isEqualTo("2");
+	}
+
+	@Test
+	void entregarComPinErradoDeveLancarUnprocessableENaoAlterarNada() {
+		Pedido pedido = pedidoEmEntrega();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+		String pinErrado = pedido.getPin().equals("0000") ? "1111" : "0000";
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.entregar(1L, "31", pinErrado));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+		assertThat(pedido.getStatus()).isEqualTo(PedidoStatus.EM_ENTREGA);
+		org.mockito.Mockito.verifyNoInteractions(entregadorClient, eventPublisher);
+	}
+
+	@Test
+	void entregarDeveLancarConflitoQuandoPedidoNaoEstaEmEntrega() {
+		Pedido pedido = pedidoComEntregaAceita();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.entregar(1L, "31", pedido.getPin()));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+	}
+
+	@Test
+	void entregarDeveLancarForbiddenQuandoPedidoEDeOutroEntregador() {
+		Pedido pedido = pedidoEmEntrega();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.entregar(1L, "99", pedido.getPin()));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+	}
+
+	@Test
+	void listarPorEntregadorDeveRetornarPedidosAtribuidos() {
+		Pedido pedido = pedidoComEntregaAceita();
+		when(pedidoRepository.findByEntregadorId("31")).thenReturn(List.of(pedido));
+		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
+
+		List<PedidoResponse> response = pedidoService.listarPorEntregador("31");
+
+		assertThat(response).hasSize(1);
+		assertThat(response.get(0).entregadorId()).isEqualTo("31");
+	}
+
 	@Test
 	void aplicarPedidoEntregueDeveTransicionarDeEmEntregaParaEntregueELiberarEntregador() {
 		Pedido pedido = new Pedido(1L, 2L, new BigDecimal("31.80"), "Rua B, 2", -23.5, -46.6);
 		pedido.transicionar(PedidoStatus.AGUARDANDO_VALIDACAO, PedidoStatus.VALIDADO);
-		pedido.atribuirEntregador("31");
+		pedido.atribuirEntregador("31", "88");
 		pedido.transicionar(PedidoStatus.VALIDADO, PedidoStatus.ENTREGA_ACEITA);
 		pedido.transicionar(PedidoStatus.ENTREGA_ACEITA, PedidoStatus.EM_ENTREGA);
 		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
 		when(pedidoRepository.save(pedido)).thenReturn(pedido);
 		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
-		PedidoEntregueDados dados = new PedidoEntregueDados("1", "88", "31", Instant.now(), true);
+		PedidoEntregueDados dados = new PedidoEntregueDados("1", "88", "31", Instant.now(), true, null, null);
 
 		PedidoResponse response = pedidoService.aplicarPedidoEntregue(dados);
 
@@ -371,7 +501,7 @@ class PedidoServiceTest {
 		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
 		when(pedidoRepository.save(pedido)).thenReturn(pedido);
 		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
-		PedidoEntregueDados dados = new PedidoEntregueDados("1", "88", "31", Instant.now(), true);
+		PedidoEntregueDados dados = new PedidoEntregueDados("1", "88", "31", Instant.now(), true, null, null);
 
 		pedidoService.aplicarPedidoEntregue(dados);
 
@@ -382,7 +512,7 @@ class PedidoServiceTest {
 	void aplicarPedidoEntregueDeveLancarConflitoQuandoPedidoNaoEstaEmEntrega() {
 		Pedido pedido = new Pedido(1L, 2L, new BigDecimal("31.80"), "Rua B, 2", -23.5, -46.6);
 		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
-		PedidoEntregueDados dados = new PedidoEntregueDados("1", "88", "31", Instant.now(), true);
+		PedidoEntregueDados dados = new PedidoEntregueDados("1", "88", "31", Instant.now(), true, null, null);
 
 		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
 				ResponseStatusException.class, () -> pedidoService.aplicarPedidoEntregue(dados));

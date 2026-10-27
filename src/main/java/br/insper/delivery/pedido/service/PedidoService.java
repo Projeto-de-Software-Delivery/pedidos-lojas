@@ -1,6 +1,7 @@
 package br.insper.delivery.pedido.service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,6 +37,10 @@ import br.insper.delivery.pedido.event.EntregaAceitaEvent;
 import br.insper.delivery.pedido.event.EntregaAceitaEvento;
 import br.insper.delivery.pedido.event.PedidoCriadoEvent;
 import br.insper.delivery.pedido.event.PedidoCriadoEvento;
+import br.insper.delivery.pedido.event.PedidoEntregueEvent;
+import br.insper.delivery.pedido.event.PedidoEntregueEvento;
+import br.insper.delivery.pedido.event.PedidoRetiradoEvent;
+import br.insper.delivery.pedido.event.PedidoRetiradoEvento;
 import br.insper.delivery.pedido.event.PedidoValidadoEvent;
 import br.insper.delivery.pedido.event.PedidoValidadoEvento;
 import br.insper.delivery.pedido.repository.ItemPedidoRepository;
@@ -53,6 +58,7 @@ public class PedidoService {
 	// ponytail: sem integracao com mapas (fora do escopo do servico de entregador); ETA fixo ate
 	// que exista um calculo real de distancia/trafego.
 	private static final int ETA_RETIRADA_PADRAO_MIN = 15;
+	private static final int ETA_ENTREGA_PADRAO_MIN = 20;
 	private static final String ENTREGADOR_STATUS_EM_ENTREGA = "EM_ENTREGA";
 	private static final String ENTREGADOR_STATUS_DISPONIVEL = "DISPONIVEL";
 
@@ -144,7 +150,7 @@ public class PedidoService {
 		} catch (IllegalStateException e) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
 		}
-		pedido.atribuirEntregador(dados.entregadorId());
+		pedido.atribuirEntregador(dados.entregadorId(), dados.entregaId());
 		Pedido salvo = pedidoRepository.save(pedido);
 		log.info("Pedido {} transicionou de VALIDADO para ENTREGA_ACEITA (entregador {})", salvo.getId(),
 				dados.entregadorId());
@@ -153,6 +159,26 @@ public class PedidoService {
 
 	public PedidoResponse aplicarPedidoRetirado(PedidoRetiradoDados dados) {
 		return aplicarTransicao(dados.pedidoId(), PedidoStatus.ENTREGA_ACEITA, PedidoStatus.EM_ENTREGA);
+	}
+
+	/** App do entregador: só o entregador atribuído pode retirar; publica pedido.retirado. */
+	public PedidoResponse retirar(Long pedidoId, String entregadorId) {
+		Pedido pedido = buscarEntidadeDoEntregador(pedidoId, entregadorId);
+		try {
+			pedido.transicionar(PedidoStatus.ENTREGA_ACEITA, PedidoStatus.EM_ENTREGA);
+		} catch (IllegalStateException e) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+		}
+		Pedido salvo = pedidoRepository.save(pedido);
+		log.info("Pedido {} retirado pelo entregador {} e transicionou para EM_ENTREGA", salvo.getId(),
+				entregadorId);
+
+		PedidoRetiradoDados dados = new PedidoRetiradoDados(String.valueOf(salvo.getId()), salvo.getEntregaId(),
+				entregadorId, Instant.now(), ETA_ENTREGA_PADRAO_MIN, String.valueOf(salvo.getClienteId()),
+				String.valueOf(salvo.getLojaId()));
+		eventPublisher.publishEvent(new PedidoRetiradoEvent(this, PedidoRetiradoEvento.de(dados)));
+
+		return paraResponse(salvo, itemPedidoRepository.findByPedidoId(salvo.getId()));
 	}
 
 	/** Libera o entregador (volta a DISPONIVEL) depois de concluída a entrega. */
@@ -164,9 +190,42 @@ public class PedidoService {
 		return response;
 	}
 
+	/**
+	 * App do entregador: finaliza a corrida se o PIN bater com o do pedido, libera o entregador e
+	 * publica pedido.entregue. PIN errado não altera nada (422).
+	 */
+	public PedidoResponse entregar(Long pedidoId, String entregadorId, String pin) {
+		Pedido pedido = buscarEntidadeDoEntregador(pedidoId, entregadorId);
+		if (pedido.getStatus() != PedidoStatus.EM_ENTREGA) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Pedido está em " + pedido.getStatus() + ", esperado EM_ENTREGA para entregar");
+		}
+		if (!pedido.getPin().equals(pin)) {
+			throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Código de entrega incorreto");
+		}
+		pedido.transicionar(PedidoStatus.EM_ENTREGA, PedidoStatus.ENTREGUE);
+		Pedido salvo = pedidoRepository.save(pedido);
+		log.info("Pedido {} entregue pelo entregador {} com PIN validado", salvo.getId(), entregadorId);
+		entregadorClient.atualizarStatus(entregadorId, ENTREGADOR_STATUS_DISPONIVEL);
+
+		PedidoEntregueDados dados = new PedidoEntregueDados(String.valueOf(salvo.getId()), salvo.getEntregaId(),
+				entregadorId, Instant.now(), true, String.valueOf(salvo.getClienteId()),
+				String.valueOf(salvo.getLojaId()));
+		eventPublisher.publishEvent(new PedidoEntregueEvent(this, PedidoEntregueEvento.de(dados)));
+
+		return paraResponse(salvo, itemPedidoRepository.findByPedidoId(salvo.getId()));
+	}
+
 	public List<PedidoResponse> listarPorCliente(Long clienteId) {
 		clienteService.buscarPorId(clienteId);
 		return pedidoRepository.findByClienteId(clienteId).stream()
+				.map(pedido -> paraResponse(pedido, itemPedidoRepository.findByPedidoId(pedido.getId())))
+				.toList();
+	}
+
+	/** App do entregador: corridas atribuídas a ele, em qualquer status. */
+	public List<PedidoResponse> listarPorEntregador(String entregadorId) {
+		return pedidoRepository.findByEntregadorId(entregadorId).stream()
 				.map(pedido -> paraResponse(pedido, itemPedidoRepository.findByPedidoId(pedido.getId())))
 				.toList();
 	}
@@ -224,13 +283,14 @@ public class PedidoService {
 
 		EntregadorDados escolhido = entregador.get();
 		entregadorClient.atualizarStatus(escolhido.id(), ENTREGADOR_STATUS_EM_ENTREGA);
-		pedido.atribuirEntregador(escolhido.id());
+		String entregaId = UUID.randomUUID().toString();
+		pedido.atribuirEntregador(escolhido.id(), entregaId);
 		pedido.transicionar(PedidoStatus.VALIDADO, PedidoStatus.ENTREGA_ACEITA);
 		log.info("Pedido {} atribuído ao entregador {}", pedido.getId(), escolhido.id());
 
 		// payloads.md exemplifica veiculo em minusculo; o servico de entregador usa maiusculo.
 		EntregaAceitaDados dados = new EntregaAceitaDados(String.valueOf(pedido.getId()),
-				UUID.randomUUID().toString(), escolhido.id(), escolhido.nome(),
+				entregaId, escolhido.id(), escolhido.nome(),
 				escolhido.veiculo().toLowerCase(), ETA_RETIRADA_PADRAO_MIN);
 		eventPublisher.publishEvent(new EntregaAceitaEvent(this, EntregaAceitaEvento.de(dados)));
 	}
@@ -253,6 +313,14 @@ public class PedidoService {
 		Pedido pedido = buscarEntidade(pedidoId);
 		if (!pedido.getLojaId().equals(lojaId)) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido não encontrado para esta loja");
+		}
+		return pedido;
+	}
+
+	private Pedido buscarEntidadeDoEntregador(Long pedidoId, String entregadorId) {
+		Pedido pedido = buscarEntidade(pedidoId);
+		if (!entregadorId.equals(pedido.getEntregadorId())) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Pedido não está atribuído a este entregador");
 		}
 		return pedido;
 	}
