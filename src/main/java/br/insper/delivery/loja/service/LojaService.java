@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import br.insper.delivery.config.Auth0User;
+import br.insper.delivery.config.SecurityUtils;
 import br.insper.delivery.loja.domain.Loja;
 import br.insper.delivery.loja.dto.LojaRequest;
 import br.insper.delivery.loja.repository.LojaRepository;
@@ -27,9 +29,17 @@ public class LojaService {
 	}
 
 	public Loja criar(LojaRequest request) {
-		Loja loja = new Loja(request.nome(), request.cnpj(), request.endereco());
+		String auth0Sub = SecurityUtils.getCurrentUserSub().orElse(null);
+		return criar(request, auth0Sub);
+	}
+
+	public Loja criar(LojaRequest request, String auth0Sub) {
+		if (auth0Sub != null && lojaRepository.findByAuth0Sub(auth0Sub).isPresent()) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "Loja já cadastrada para este usuário");
+		}
+		Loja loja = new Loja(request.nome(), request.cnpj(), request.endereco(), auth0Sub);
 		Loja salva = lojaRepository.save(loja);
-		log.info("Loja criada: id={}, cnpj={}", salva.getId(), salva.getCnpj());
+		log.info("Loja criada: id={}, cnpj={}, auth0Sub={}", salva.getId(), salva.getCnpj(), salva.getAuth0Sub());
 		return salva;
 	}
 
@@ -45,13 +55,41 @@ public class LojaService {
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Loja não encontrada"));
 	}
 
+	/**
+	 * Busca a loja pertencente ao usuário logado no Auth0.
+	 */
+	public Loja buscarMe() {
+		Auth0User user = SecurityUtils.getCurrentUser()
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Usuário não autenticado"));
+
+		if (user.sub() != null) {
+			return lojaRepository.findByAuth0Sub(user.sub())
+					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Loja não encontrada"));
+		}
+
+		throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Loja não encontrada");
+	}
+
+	/**
+	 * Valida se a loja pertence ao usuário autenticado (ou se é registro mock/legado).
+	 */
+	public void validarAcesso(Long id) {
+		Loja loja = buscarPorId(id);
+		String sub = SecurityUtils.getCurrentUserSub().orElse(null);
+		if (loja.getAuth0Sub() != null && !loja.getAuth0Sub().equals(sub)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acesso negado: recurso não pertence ao usuário");
+		}
+	}
+
 	public Loja atualizar(Long id, LojaRequest request) {
+		validarAcesso(id);
 		Loja loja = buscarPorId(id);
 		loja.atualizar(request.nome(), request.cnpj(), request.endereco());
 		return lojaRepository.save(loja);
 	}
 
 	public void deletar(Long id) {
+		validarAcesso(id);
 		Loja loja = buscarPorId(id);
 		lojaRepository.delete(loja);
 	}
