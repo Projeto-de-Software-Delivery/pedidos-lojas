@@ -39,7 +39,7 @@ public class CarrinhoService {
 
 	/**
 	 * Se o produto já estiver no carrinho, soma a quantidade à existente e atualiza o preço
-	 * unitário para o preço atual do produto.
+	 * unitário para o preço atual do produto. A quantidade total não pode passar do estoque (422).
 	 */
 	public CarrinhoResponse adicionarItem(Long clienteId, ItemCarrinhoRequest request) {
 		clienteService.buscarPorId(clienteId);
@@ -47,15 +47,32 @@ public class CarrinhoService {
 
 		ItemCarrinho item = itemCarrinhoRepository.findByClienteIdAndProdutoId(clienteId, request.produtoId())
 				.map(existente -> {
+					validarEstoque(produto, existente.getQuantidade() + request.quantidade());
 					existente.adicionarQuantidade(request.quantidade(), produto.getPreco());
 					return existente;
 				})
-				.orElseGet(() -> new ItemCarrinho(clienteId, request.produtoId(), request.quantidade(),
-						produto.getPreco()));
+				.orElseGet(() -> {
+					validarEstoque(produto, request.quantidade());
+					return new ItemCarrinho(clienteId, request.produtoId(), request.quantidade(), produto.getPreco());
+				});
 
 		ItemCarrinho salvo = itemCarrinhoRepository.save(item);
 		log.info("Item adicionado ao carrinho: clienteId={}, produtoId={}, quantidade={}", salvo.getClienteId(),
 				salvo.getProdutoId(), salvo.getQuantidade());
+		return montarCarrinho(clienteId);
+	}
+
+	/** Troca a quantidade do item (não soma); não pode passar do estoque (422). */
+	public CarrinhoResponse alterarQuantidade(Long clienteId, Long itemId, Integer quantidade) {
+		clienteService.buscarPorId(clienteId);
+		ItemCarrinho item = buscarItem(clienteId, itemId);
+		Produto produto = produtoService.buscarPorId(item.getProdutoId());
+		validarEstoque(produto, quantidade);
+
+		item.alterarQuantidade(quantidade, produto.getPreco());
+		itemCarrinhoRepository.save(item);
+		log.info("Quantidade alterada no carrinho: clienteId={}, produtoId={}, quantidade={}", clienteId,
+				item.getProdutoId(), quantidade);
 		return montarCarrinho(clienteId);
 	}
 
@@ -71,6 +88,13 @@ public class CarrinhoService {
 	public CarrinhoResponse buscarCarrinho(Long clienteId) {
 		clienteService.buscarPorId(clienteId);
 		return montarCarrinho(clienteId);
+	}
+
+	private void validarEstoque(Produto produto, int quantidade) {
+		if (quantidade > produto.getEstoque()) {
+			throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+					"Só temos " + produto.getEstoque() + " unidade(s) de " + produto.getNome() + " em estoque");
+		}
 	}
 
 	private ItemCarrinho buscarItem(Long clienteId, Long itemId) {
