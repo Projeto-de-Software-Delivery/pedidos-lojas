@@ -47,6 +47,36 @@ class LojaControllerTest {
 	}
 
 	@Test
+	void criarLojaSemPrazosUsaOPadrao() throws Exception {
+		mockMvc.perform(post("/lojas")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"nome\":\"Padaria\",\"cnpj\":\"12345678000199\",\"endereco\":\"Rua A, 1\"}"))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.tempoMaxAceiteMin").value(10))
+				.andExpect(jsonPath("$.tempoMaxEntregaMin").value(60));
+	}
+
+	@Test
+	void criarLojaComPrazosDevolveOsPrazos() throws Exception {
+		mockMvc.perform(post("/lojas")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"nome\":\"Padaria\",\"cnpj\":\"12345678000199\",\"endereco\":\"Rua A, 1\","
+						+ "\"tempoMaxAceiteMin\":5,\"tempoMaxEntregaMin\":40}"))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.tempoMaxAceiteMin").value(5))
+				.andExpect(jsonPath("$.tempoMaxEntregaMin").value(40));
+	}
+
+	@Test
+	void criarLojaComPrazoZeradoRetorna400() throws Exception {
+		mockMvc.perform(post("/lojas")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"nome\":\"Padaria\",\"cnpj\":\"12345678000199\",\"endereco\":\"Rua A, 1\","
+						+ "\"tempoMaxAceiteMin\":0}"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void criarLojaComCnpjInvalidoRetorna400() throws Exception {
 		mockMvc.perform(post("/lojas")
 				.contentType(MediaType.APPLICATION_JSON)

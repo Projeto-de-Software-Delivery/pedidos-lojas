@@ -1,5 +1,6 @@
 package br.insper.delivery.pedido.repository;
 
+import java.time.Instant;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +15,8 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
 	List<Pedido> findByLojaIdAndStatus(Long lojaId, PedidoStatus status);
 
 	List<Pedido> findByLojaId(Long lojaId);
+
+	List<Pedido> findByStatusAndPrazoAceiteBefore(PedidoStatus status, Instant limite);
 
 	List<Pedido> findByEntregadorId(String entregadorId);
 }

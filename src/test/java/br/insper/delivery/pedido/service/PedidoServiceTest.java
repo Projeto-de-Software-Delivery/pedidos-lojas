@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -104,6 +105,24 @@ class PedidoServiceTest {
 		assertThat(response.enderecoEntrega().rua()).isEqualTo("Rua B, 2");
 		assertThat(response.pin()).matches("\\d{4}");
 		verify(eventPublisher).publishEvent(any(PedidoCriadoEvent.class));
+	}
+
+	@Test
+	void criarDeveDefinirPrazoDeAceiteComOTempoDaLoja() {
+		Loja loja = new Loja("Padaria", "12345678000199", "Rua A, 1");
+		loja.definirPrazos(5, 30);
+		when(clienteService.buscarPorId(1L)).thenReturn(CLIENTE);
+		when(lojaService.buscarPorId(2L)).thenReturn(loja);
+		Produto produto = new Produto(2L, "Bolo", "Sobremesas", new BigDecimal("15.90"), 10, "foto.png");
+		when(produtoService.buscarPorId(9L)).thenReturn(produto);
+		ArgumentCaptor<Pedido> captor = ArgumentCaptor.forClass(Pedido.class);
+		when(pedidoRepository.save(captor.capture())).thenAnswer(invocacao -> invocacao.getArgument(0));
+		when(itemPedidoRepository.save(any(ItemPedido.class))).thenAnswer(invocacao -> invocacao.getArgument(0));
+
+		pedidoService.criar(1L, requestPadrao());
+
+		Pedido salvo = captor.getValue();
+		assertThat(salvo.getPrazoAceite()).isEqualTo(salvo.getDataCriacao().plus(5, ChronoUnit.MINUTES));
 	}
 
 	@Test
@@ -640,8 +659,37 @@ class PedidoServiceTest {
 
 		assertThat(response.status()).isEqualTo(PedidoStatus.VALIDADO);
 		assertThat(response.entregadorId()).isNull();
+		assertThat(response.prazoEntrega()).isBetween(
+				Instant.now().plus(Loja.TEMPO_MAX_ENTREGA_PADRAO_MIN - 1, ChronoUnit.MINUTES),
+				Instant.now().plus(Loja.TEMPO_MAX_ENTREGA_PADRAO_MIN, ChronoUnit.MINUTES));
 		verify(produtoService).baixarEstoque(anyMap());
 		verify(eventPublisher).publishEvent(any(PedidoValidadoEvent.class));
+	}
+
+	@Test
+	void aceitarComPrazoDeAceiteVencidoDeveLancarConflitoSemBaixarEstoque() {
+		when(lojaService.buscarPorId(2L)).thenReturn(LOJA);
+		Pedido pedido = new Pedido(1L, 2L, new BigDecimal("31.80"), "Rua B, 2", -23.5, -46.6);
+		pedido.definirPrazoAceite(Instant.now().minusSeconds(1));
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.aceitar(2L, 1L, aceitarPedidoRequestPadrao()));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+		org.mockito.Mockito.verifyNoInteractions(produtoService, eventPublisher);
+	}
+
+	@Test
+	void cancelarPedidosComPrazoDeAceiteVencidoDeveCancelarOsVencidos() {
+		Pedido vencido = new Pedido(1L, 2L, new BigDecimal("31.80"), "Rua B, 2", -23.5, -46.6);
+		when(pedidoRepository.findByStatusAndPrazoAceiteBefore(any(PedidoStatus.class), any(Instant.class)))
+				.thenReturn(List.of(vencido));
+
+		pedidoService.cancelarPedidosComPrazoDeAceiteVencido();
+
+		assertThat(vencido.getStatus()).isEqualTo(PedidoStatus.CANCELADO);
+		verify(pedidoRepository).save(vencido);
 	}
 
 	@Test

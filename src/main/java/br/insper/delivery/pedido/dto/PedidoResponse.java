@@ -12,5 +12,5 @@ import br.insper.delivery.pedido.domain.PedidoStatus;
 public record PedidoResponse(Long id, Long clienteId, Long lojaId, List<ItemPedidoResponse> itens, BigDecimal total,
 		EnderecoEntregaResponse enderecoEntrega, PedidoStatus status, Instant dataCriacao, String pin,
 		String entregadorId, String codigoRetirada, boolean entregaConfirmadaPeloEntregador,
-		boolean recebimentoConfirmadoPeloCliente) {
+		boolean recebimentoConfirmadoPeloCliente, Instant prazoAceite, Instant prazoEntrega) {
 }
