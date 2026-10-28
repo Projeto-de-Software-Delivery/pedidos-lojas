@@ -92,7 +92,7 @@ Lista completa de rotas e contratos: veja a [documentação OpenAPI](#documenta�
 stateDiagram-v2
     [*] --> AGUARDANDO_VALIDACAO
     AGUARDANDO_VALIDACAO --> VALIDADO: loja aceita (baixa estoque)
-    AGUARDANDO_VALIDACAO --> CANCELADO: loja recusa
+    AGUARDANDO_VALIDACAO --> CANCELADO: loja recusa ou estoura o prazo de aceite
     VALIDADO --> ENTREGA_ACEITA: entregador atribuído
     ENTREGA_ACEITA --> EM_ENTREGA: retirada na loja
     EM_ENTREGA --> ENTREGUE: PIN validado + cliente confirmou
@@ -110,8 +110,9 @@ stateDiagram-v2
 - **EM_ENTREGA**: entregador retirou o pedido na loja.
 - **ENTREGUE**: entrega concluída (PIN de 4 dígitos validado com o cliente);
   o entregador é liberado (`DISPONIVEL`) automaticamente nesse momento.
-- **CANCELADO**: a loja recusou o pedido antes de aceitar (nenhum estoque é
-  alterado, já que ele só é baixado na aceitação).
+- **CANCELADO**: a loja recusou o pedido, ou não aceitou dentro do `tempoMaxAceiteMin` dela (o `PrazoAceiteJob` confere a cada 30 s). Nenhum estoque é
+  alterado, já que ele só é baixado na aceitação. O prazo de entrega (`tempoMaxEntregaMin`, contado da
+  aceitação) não cancela nada: vai em `prazoEntrega` no pedido e o front mostra o atraso.
 
 ## Eventos publicados (RabbitMQ)
 

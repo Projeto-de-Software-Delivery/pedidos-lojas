@@ -2,6 +2,7 @@ package br.insper.delivery.pedido.service;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -19,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 import br.insper.delivery.cliente.service.ClienteService;
 import br.insper.delivery.entregador.EntregadorClient;
 import br.insper.delivery.entregador.EntregadorDados;
+import br.insper.delivery.loja.domain.Loja;
 import br.insper.delivery.loja.service.LojaService;
 import br.insper.delivery.pedido.domain.ItemPedido;
 import br.insper.delivery.pedido.domain.Pedido;
@@ -85,7 +87,7 @@ public class PedidoService {
 	/** Status inicial AGUARDANDO_VALIDACAO; publica pedido.criado. */
 	public PedidoResponse criar(Long clienteId, CriarPedidoRequest request) {
 		clienteService.buscarPorId(clienteId);
-		lojaService.buscarPorId(request.lojaId());
+		Loja loja = lojaService.buscarPorId(request.lojaId());
 
 		record ItemResolvido(Long produtoId, Integer quantidade, BigDecimal precoUnitario) {
 		}
@@ -112,6 +114,7 @@ public class PedidoService {
 
 		Pedido pedido = new Pedido(clienteId, request.lojaId(), total, request.enderecoEntrega().rua(),
 				request.enderecoEntrega().lat(), request.enderecoEntrega().lng());
+		pedido.definirPrazoAceite(pedido.getDataCriacao().plus(loja.getTempoMaxAceiteMin(), ChronoUnit.MINUTES));
 		Pedido pedidoSalvo = pedidoRepository.save(pedido);
 
 		List<ItemPedido> itensSalvos = resolvidos.stream()
@@ -289,12 +292,17 @@ public class PedidoService {
 	 */
 	@Transactional
 	public PedidoResponse aceitar(Long lojaId, Long pedidoId, AceitarPedidoRequest request) {
-		lojaService.buscarPorId(lojaId);
+		Loja loja = lojaService.buscarPorId(lojaId);
 		Pedido pedido = buscarEntidadeDaLoja(lojaId, pedidoId);
 		if (pedido.getStatus() != PedidoStatus.AGUARDANDO_VALIDACAO) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
 					"Pedido está em " + pedido.getStatus() + ", esperado AGUARDANDO_VALIDACAO para aceitar");
 		}
+		// o job de cancelamento roda de tempos em tempos; entre uma rodada e outra, barra aqui
+		if (pedido.prazoAceiteVencido(Instant.now())) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "O prazo para aceitar este pedido já passou");
+		}
+		pedido.definirPrazoEntrega(Instant.now().plus(loja.getTempoMaxEntregaMin(), ChronoUnit.MINUTES));
 
 		List<ItemPedido> itens = itemPedidoRepository.findByPedidoId(pedido.getId());
 		Map<Long, Integer> quantidadesPorProduto = itens.stream()
@@ -354,6 +362,18 @@ public class PedidoService {
 		return paraResponse(salvo, itemPedidoRepository.findByPedidoId(salvo.getId()));
 	}
 
+	/** Cancela os pedidos que a loja não aceitou dentro do prazo dela. Chamado pelo PrazoAceiteJob. */
+	public void cancelarPedidosComPrazoDeAceiteVencido() {
+		List<Pedido> vencidos = pedidoRepository.findByStatusAndPrazoAceiteBefore(PedidoStatus.AGUARDANDO_VALIDACAO,
+				Instant.now());
+		for (Pedido pedido : vencidos) {
+			pedido.transicionar(PedidoStatus.AGUARDANDO_VALIDACAO, PedidoStatus.CANCELADO);
+			pedidoRepository.save(pedido);
+			log.info("Pedido {} cancelado: a loja {} não aceitou até {}", pedido.getId(), pedido.getLojaId(),
+					pedido.getPrazoAceite());
+		}
+	}
+
 	private Pedido buscarEntidadeDaLoja(Long lojaId, Long pedidoId) {
 		Pedido pedido = buscarEntidade(pedidoId);
 		if (!pedido.getLojaId().equals(lojaId)) {
@@ -403,6 +423,6 @@ public class PedidoService {
 		return new PedidoResponse(pedido.getId(), pedido.getClienteId(), pedido.getLojaId(), itensResponse,
 				pedido.getTotal(), enderecoEntrega, pedido.getStatus(), pedido.getDataCriacao(), pedido.getPin(),
 				pedido.getEntregadorId(), pedido.getCodigoRetirada(), pedido.isEntregaConfirmadaPeloEntregador(),
-				pedido.isRecebimentoConfirmadoPeloCliente());
+				pedido.isRecebimentoConfirmadoPeloCliente(), pedido.getPrazoAceite(), pedido.getPrazoEntrega());
 	}
 }

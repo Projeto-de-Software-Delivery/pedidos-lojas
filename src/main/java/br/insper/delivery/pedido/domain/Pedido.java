@@ -57,6 +57,11 @@ public class Pedido {
 
 	private Boolean recebimentoConfirmadoPeloCliente;
 
+	// prazos da loja no momento do pedido: aceite (cancela sozinho se passar) e entrega (só avisa atraso)
+	private Instant prazoAceite;
+
+	private Instant prazoEntrega;
+
 	protected Pedido() {
 	}
 
@@ -133,6 +138,26 @@ public class Pedido {
 
 	public boolean isRecebimentoConfirmadoPeloCliente() {
 		return Boolean.TRUE.equals(recebimentoConfirmadoPeloCliente);
+	}
+
+	public Instant getPrazoAceite() {
+		return prazoAceite;
+	}
+
+	public Instant getPrazoEntrega() {
+		return prazoEntrega;
+	}
+
+	public void definirPrazoAceite(Instant prazoAceite) {
+		this.prazoAceite = prazoAceite;
+	}
+
+	public void definirPrazoEntrega(Instant prazoEntrega) {
+		this.prazoEntrega = prazoEntrega;
+	}
+
+	public boolean prazoAceiteVencido(Instant agora) {
+		return prazoAceite != null && agora.isAfter(prazoAceite);
 	}
 
 	public void confirmarEntregaPeloEntregador() {

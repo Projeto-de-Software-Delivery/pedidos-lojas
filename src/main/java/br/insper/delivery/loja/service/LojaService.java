@@ -28,6 +28,7 @@ public class LojaService {
 
 	public Loja criar(LojaRequest request) {
 		Loja loja = new Loja(request.nome(), request.cnpj(), request.endereco());
+		loja.definirPrazos(request.tempoMaxAceiteMin(), request.tempoMaxEntregaMin());
 		Loja salva = lojaRepository.save(loja);
 		log.info("Loja criada: id={}, cnpj={}", salva.getId(), salva.getCnpj());
 		return salva;
@@ -48,6 +49,7 @@ public class LojaService {
 	public Loja atualizar(Long id, LojaRequest request) {
 		Loja loja = buscarPorId(id);
 		loja.atualizar(request.nome(), request.cnpj(), request.endereco());
+		loja.definirPrazos(request.tempoMaxAceiteMin(), request.tempoMaxEntregaMin());
 		return lojaRepository.save(loja);
 	}
 
