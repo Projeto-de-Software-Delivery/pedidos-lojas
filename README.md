@@ -73,9 +73,9 @@ não há acesso direto a dados de outro serviço, só via API ou evento.
 
 | Domínio | Rota base | O que faz |
 |---|---|---|
-| Cliente | `/clientes` | CRUD de clientes. |
+| Cliente | `/clientes`, `GET /clientes/me` | CRUD de clientes e consulta do perfil autenticado Auth0. |
 | Endereço | `/clientes/{clienteId}/enderecos` | CRUD de endereços de entrega de um cliente. |
-| Loja | `/lojas` | CRUD de lojas. |
+| Loja | `/lojas`, `GET /lojas/me` | CRUD de lojas e consulta da loja do usuário autenticado Auth0. |
 | Produto | `/produtos` | CRUD de produtos (vinculados a uma loja), com controle de estoque. |
 | Carrinho | `/clientes/{clienteId}/carrinho` | Adicionar/remover itens do carrinho de um cliente. |
 | Pedido | `/clientes/{clienteId}/pedidos`, `/pedidos/{id}`, `/lojas/{lojaId}/pedidos/...` | Criação, consulta e ciclo de vida do pedido (aceitar/recusar pela loja). |

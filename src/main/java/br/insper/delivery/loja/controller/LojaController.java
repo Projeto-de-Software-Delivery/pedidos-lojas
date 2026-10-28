@@ -37,6 +37,11 @@ public class LojaController {
 		return ResponseEntity.status(HttpStatus.CREATED).body(response);
 	}
 
+	@GetMapping("/me")
+	public ResponseEntity<LojaResponse> buscarMe() {
+		return ResponseEntity.ok(LojaResponse.from(lojaService.buscarMe()));
+	}
+
 	@GetMapping
 	public ResponseEntity<List<LojaResponse>> listarTodas() {
 		List<LojaResponse> response = lojaService.listarTodas().stream().map(LojaResponse::from).toList();
@@ -45,6 +50,7 @@ public class LojaController {
 
 	@GetMapping("/{id}")
 	public ResponseEntity<LojaResponse> buscarPorId(@PathVariable Long id) {
+		lojaService.validarAcesso(id);
 		return ResponseEntity.ok(LojaResponse.from(lojaService.buscarPorId(id)));
 	}
 

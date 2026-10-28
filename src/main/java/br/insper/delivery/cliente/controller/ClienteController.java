@@ -37,6 +37,11 @@ public class ClienteController {
 		return ResponseEntity.status(HttpStatus.CREATED).body(response);
 	}
 
+	@GetMapping("/me")
+	public ResponseEntity<ClienteResponse> buscarMe() {
+		return ResponseEntity.ok(ClienteResponse.from(clienteService.buscarMe()));
+	}
+
 	@GetMapping
 	public ResponseEntity<List<ClienteResponse>> listarTodos() {
 		List<ClienteResponse> response = clienteService.listarTodos().stream().map(ClienteResponse::from).toList();
@@ -45,6 +50,7 @@ public class ClienteController {
 
 	@GetMapping("/{id}")
 	public ResponseEntity<ClienteResponse> buscarPorId(@PathVariable Long id) {
+		clienteService.validarAcesso(id);
 		return ResponseEntity.ok(ClienteResponse.from(clienteService.buscarPorId(id)));
 	}
 

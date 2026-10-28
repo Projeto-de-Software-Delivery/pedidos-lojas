@@ -96,4 +96,129 @@ class LojaServiceTest {
 		org.junit.jupiter.api.Assertions.assertThrows(ResponseStatusException.class,
 				() -> lojaService.deletar(1L));
 	}
+
+	@Test
+	void criarComAuth0SubPersisteIdentificador() {
+		LojaRequest request = new LojaRequest("Pizzaria", "12345678000199", "Rua C, 3");
+		Loja salva = new Loja("Pizzaria", "12345678000199", "Rua C, 3", "auth0|loja123");
+		when(lojaRepository.findByAuth0Sub("auth0|loja123")).thenReturn(Optional.empty());
+		when(lojaRepository.save(any(Loja.class))).thenReturn(salva);
+
+		Loja resultado = lojaService.criar(request, "auth0|loja123");
+
+		assertThat(resultado.getAuth0Sub()).isEqualTo("auth0|loja123");
+	}
+
+	@Test
+	void criarComAuth0SubJaExistenteLancaConflict() {
+		LojaRequest request = new LojaRequest("Pizzaria", "12345678000199", "Rua C, 3");
+		Loja existente = new Loja("Outra", "99999999000199", "Rua D, 4", "auth0|loja123");
+		when(lojaRepository.findByAuth0Sub("auth0|loja123")).thenReturn(Optional.of(existente));
+
+		ResponseStatusException ex = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class,
+				() -> lojaService.criar(request, "auth0|loja123")
+		);
+		assertThat(ex.getStatusCode().value()).isEqualTo(409);
+	}
+
+	@Test
+	void buscarMeComSubRetornaLoja() {
+		Loja loja = new Loja("Pizzaria", "12345678000199", "Rua C, 3", "auth0|loja123");
+		when(lojaRepository.findByAuth0Sub("auth0|loja123")).thenReturn(Optional.of(loja));
+
+		org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+				new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+						new br.insper.delivery.config.Auth0User("auth0|loja123", "loja@email.com"),
+						"token"
+				)
+		);
+		try {
+			Loja resultado = lojaService.buscarMe();
+			assertThat(resultado.getNome()).isEqualTo("Pizzaria");
+			assertThat(resultado.getAuth0Sub()).isEqualTo("auth0|loja123");
+		} finally {
+			org.springframework.security.core.context.SecurityContextHolder.clearContext();
+		}
+	}
+
+	@Test
+	void buscarMeNaoAutenticadoLancaUnauthorized() {
+		org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+		ResponseStatusException ex = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class,
+				() -> lojaService.buscarMe()
+		);
+		assertThat(ex.getStatusCode().value()).isEqualTo(401);
+	}
+
+	@Test
+	void buscarMeNaoCadastradoLancaNotFound() {
+		when(lojaRepository.findByAuth0Sub("auth0|loja_nova")).thenReturn(Optional.empty());
+
+		org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+				new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+						new br.insper.delivery.config.Auth0User("auth0|loja_nova", "loja@email.com"),
+						"token"
+				)
+		);
+		try {
+			ResponseStatusException ex = org.junit.jupiter.api.Assertions.assertThrows(
+					ResponseStatusException.class,
+					() -> lojaService.buscarMe()
+			);
+			assertThat(ex.getStatusCode().value()).isEqualTo(404);
+		} finally {
+			org.springframework.security.core.context.SecurityContextHolder.clearContext();
+		}
+	}
+
+	@Test
+	void validarAcessoPermiteAcessoParaMesmoUsuario() {
+		Loja loja = new Loja("Pizzaria", "12345678000199", "Rua C, 3", "auth0|loja123");
+		when(lojaRepository.findById(1L)).thenReturn(Optional.of(loja));
+
+		org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+				new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+						new br.insper.delivery.config.Auth0User("auth0|loja123", "loja@email.com"),
+						"token"
+				)
+		);
+		try {
+			org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> lojaService.validarAcesso(1L));
+		} finally {
+			org.springframework.security.core.context.SecurityContextHolder.clearContext();
+		}
+	}
+
+	@Test
+	void validarAcessoLancaForbiddenParaOutroUsuario() {
+		Loja loja = new Loja("Pizzaria", "12345678000199", "Rua C, 3", "auth0|loja123");
+		when(lojaRepository.findById(1L)).thenReturn(Optional.of(loja));
+
+		org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+				new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+						new br.insper.delivery.config.Auth0User("auth0|outro", "outro@email.com"),
+						"token"
+				)
+		);
+		try {
+			ResponseStatusException ex = org.junit.jupiter.api.Assertions.assertThrows(
+					ResponseStatusException.class,
+					() -> lojaService.validarAcesso(1L)
+			);
+			assertThat(ex.getStatusCode().value()).isEqualTo(403);
+		} finally {
+			org.springframework.security.core.context.SecurityContextHolder.clearContext();
+		}
+	}
+
+	@Test
+	void validarAcessoPermiteAcessoQuandoLojaSemAuth0Sub() {
+		Loja loja = new Loja("Padaria", "12345678000199", "Rua A, 1", null);
+		when(lojaRepository.findById(1L)).thenReturn(Optional.of(loja));
+
+		org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> lojaService.validarAcesso(1L));
+	}
 }
