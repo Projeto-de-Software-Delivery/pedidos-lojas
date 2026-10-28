@@ -161,14 +161,20 @@ public class PedidoService {
 		return aplicarTransicao(dados.pedidoId(), PedidoStatus.ENTREGA_ACEITA, PedidoStatus.EM_ENTREGA);
 	}
 
-	/** App do entregador: só o entregador atribuído pode retirar; publica pedido.retirado. */
-	public PedidoResponse retirar(Long pedidoId, String entregadorId) {
+	/**
+	 * App do entregador: só o entregador atribuído pode retirar, e só com o código de retirada que a
+	 * loja mostrou (código errado não altera nada, 422); publica pedido.retirado.
+	 */
+	public PedidoResponse retirar(Long pedidoId, String entregadorId, String codigoRetirada) {
 		Pedido pedido = buscarEntidadeDoEntregador(pedidoId, entregadorId);
-		try {
-			pedido.transicionar(PedidoStatus.ENTREGA_ACEITA, PedidoStatus.EM_ENTREGA);
-		} catch (IllegalStateException e) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+		if (pedido.getStatus() != PedidoStatus.ENTREGA_ACEITA) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Pedido está em " + pedido.getStatus() + ", esperado ENTREGA_ACEITA para retirar");
 		}
+		if (!codigoRetirada.equals(pedido.getCodigoRetirada())) {
+			throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Código de retirada incorreto");
+		}
+		pedido.transicionar(PedidoStatus.ENTREGA_ACEITA, PedidoStatus.EM_ENTREGA);
 		Pedido salvo = pedidoRepository.save(pedido);
 		log.info("Pedido {} retirado pelo entregador {} e transicionou para EM_ENTREGA", salvo.getId(),
 				entregadorId);
@@ -191,28 +197,59 @@ public class PedidoService {
 	}
 
 	/**
-	 * App do entregador: finaliza a corrida se o PIN bater com o do pedido, libera o entregador e
-	 * publica pedido.entregue. PIN errado não altera nada (422).
+	 * App do entregador: confirma a entrega se o PIN bater com o do pedido (PIN errado não altera
+	 * nada, 422). Só finaliza quando o cliente também confirmou o recebimento; senão o pedido fica
+	 * em EM_ENTREGA esperando o cliente.
 	 */
 	public PedidoResponse entregar(Long pedidoId, String entregadorId, String pin) {
 		Pedido pedido = buscarEntidadeDoEntregador(pedidoId, entregadorId);
-		if (pedido.getStatus() != PedidoStatus.EM_ENTREGA) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT,
-					"Pedido está em " + pedido.getStatus() + ", esperado EM_ENTREGA para entregar");
-		}
+		exigirEmEntrega(pedido, "entregar");
 		if (!pedido.getPin().equals(pin)) {
 			throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Código de entrega incorreto");
 		}
-		pedido.transicionar(PedidoStatus.EM_ENTREGA, PedidoStatus.ENTREGUE);
+		pedido.confirmarEntregaPeloEntregador();
+		log.info("Pedido {}: entregador {} confirmou a entrega com PIN validado", pedido.getId(), entregadorId);
+		return finalizarSeAmbosConfirmaram(pedido);
+	}
+
+	/**
+	 * App do cliente: confirma que recebeu o pedido. Só finaliza quando o entregador também confirmou
+	 * (com o PIN); senão o pedido fica em EM_ENTREGA esperando o entregador.
+	 */
+	public PedidoResponse confirmarRecebimento(Long clienteId, Long pedidoId) {
+		Pedido pedido = buscarEntidade(pedidoId);
+		if (!pedido.getClienteId().equals(clienteId)) {
+			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido não encontrado para este cliente");
+		}
+		exigirEmEntrega(pedido, "confirmar o recebimento");
+		pedido.confirmarRecebimentoPeloCliente();
+		log.info("Pedido {}: cliente {} confirmou o recebimento", pedido.getId(), clienteId);
+		return finalizarSeAmbosConfirmaram(pedido);
+	}
+
+	private void exigirEmEntrega(Pedido pedido, String acao) {
+		if (pedido.getStatus() != PedidoStatus.EM_ENTREGA) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Pedido está em " + pedido.getStatus() + ", esperado EM_ENTREGA para " + acao);
+		}
+	}
+
+	/** Com as duas confirmações: ENTREGUE, libera o entregador e publica pedido.entregue. */
+	private PedidoResponse finalizarSeAmbosConfirmaram(Pedido pedido) {
+		boolean finalizar = pedido.isEntregaConfirmadaPeloEntregador() && pedido.isRecebimentoConfirmadoPeloCliente();
+		if (finalizar) {
+			pedido.transicionar(PedidoStatus.EM_ENTREGA, PedidoStatus.ENTREGUE);
+		}
 		Pedido salvo = pedidoRepository.save(pedido);
-		log.info("Pedido {} entregue pelo entregador {} com PIN validado", salvo.getId(), entregadorId);
-		entregadorClient.atualizarStatus(entregadorId, ENTREGADOR_STATUS_DISPONIVEL);
+		if (finalizar) {
+			log.info("Pedido {} entregue (entregador e cliente confirmaram)", salvo.getId());
+			entregadorClient.atualizarStatus(salvo.getEntregadorId(), ENTREGADOR_STATUS_DISPONIVEL);
 
-		PedidoEntregueDados dados = new PedidoEntregueDados(String.valueOf(salvo.getId()), salvo.getEntregaId(),
-				entregadorId, Instant.now(), true, String.valueOf(salvo.getClienteId()),
-				String.valueOf(salvo.getLojaId()));
-		eventPublisher.publishEvent(new PedidoEntregueEvent(this, PedidoEntregueEvento.de(dados)));
-
+			PedidoEntregueDados dados = new PedidoEntregueDados(String.valueOf(salvo.getId()), salvo.getEntregaId(),
+					salvo.getEntregadorId(), Instant.now(), true, String.valueOf(salvo.getClienteId()),
+					String.valueOf(salvo.getLojaId()));
+			eventPublisher.publishEvent(new PedidoEntregueEvent(this, PedidoEntregueEvento.de(dados)));
+		}
 		return paraResponse(salvo, itemPedidoRepository.findByPedidoId(salvo.getId()));
 	}
 
@@ -233,6 +270,14 @@ public class PedidoService {
 	public List<PedidoResponse> listarPendentesPorLoja(Long lojaId) {
 		lojaService.buscarPorId(lojaId);
 		return pedidoRepository.findByLojaIdAndStatus(lojaId, PedidoStatus.AGUARDANDO_VALIDACAO).stream()
+				.map(pedido -> paraResponse(pedido, itemPedidoRepository.findByPedidoId(pedido.getId())))
+				.toList();
+	}
+
+	/** Painel da loja: todos os pedidos dela (em andamento mostram o código de retirada). */
+	public List<PedidoResponse> listarPorLoja(Long lojaId) {
+		lojaService.buscarPorId(lojaId);
+		return pedidoRepository.findByLojaId(lojaId).stream()
 				.map(pedido -> paraResponse(pedido, itemPedidoRepository.findByPedidoId(pedido.getId())))
 				.toList();
 	}
@@ -357,6 +402,7 @@ public class PedidoService {
 				pedido.getEnderecoLat(), pedido.getEnderecoLng());
 		return new PedidoResponse(pedido.getId(), pedido.getClienteId(), pedido.getLojaId(), itensResponse,
 				pedido.getTotal(), enderecoEntrega, pedido.getStatus(), pedido.getDataCriacao(), pedido.getPin(),
-				pedido.getEntregadorId());
+				pedido.getEntregadorId(), pedido.getCodigoRetirada(), pedido.isEntregaConfirmadaPeloEntregador(),
+				pedido.isRecebimentoConfirmadoPeloCliente());
 	}
 }

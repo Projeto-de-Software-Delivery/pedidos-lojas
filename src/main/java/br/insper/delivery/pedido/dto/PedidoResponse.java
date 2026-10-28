@@ -6,9 +6,11 @@ import java.util.List;
 
 import br.insper.delivery.pedido.domain.PedidoStatus;
 
-// ponytail: pin exposto pra qualquer chamador (loja/entregador inclusive), pois nao ha
-// autorizacao por papel ainda (KAN-17). Quando ela existir, restringir pin ao cliente dono.
+// ponytail: pin e codigoRetirada expostos pra qualquer chamador (loja/entregador inclusive), pois nao ha
+// autorizacao por papel ainda (KAN-17). Quando ela existir, restringir pin ao cliente dono e
+// codigoRetirada a loja.
 public record PedidoResponse(Long id, Long clienteId, Long lojaId, List<ItemPedidoResponse> itens, BigDecimal total,
 		EnderecoEntregaResponse enderecoEntrega, PedidoStatus status, Instant dataCriacao, String pin,
-		String entregadorId) {
+		String entregadorId, String codigoRetirada, boolean entregaConfirmadaPeloEntregador,
+		boolean recebimentoConfirmadoPeloCliente) {
 }

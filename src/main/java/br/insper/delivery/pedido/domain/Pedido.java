@@ -48,10 +48,19 @@ public class Pedido {
 	// pedido.entregue
 	private String entregaId;
 
+	// a loja mostra esse código e o entregador digita na retirada (prova que os dois se encontraram)
+	private String codigoRetirada;
+
+	// a entrega só termina quando os dois lados confirmam: entregador (com o PIN) e cliente ("Recebi").
+	// Boolean e não boolean: colunas novas chegam null nos pedidos antigos.
+	private Boolean entregaConfirmadaPeloEntregador;
+
+	private Boolean recebimentoConfirmadoPeloCliente;
+
 	protected Pedido() {
 	}
 
-	/** Status inicial sempre AGUARDANDO_VALIDACAO; gera também o PIN de entrega de 4 dígitos. */
+	/** Status inicial sempre AGUARDANDO_VALIDACAO; gera o PIN de entrega e o código de retirada (4 dígitos). */
 	public Pedido(Long clienteId, Long lojaId, BigDecimal total, String enderecoRua, Double enderecoLat,
 			Double enderecoLng) {
 		this.clienteId = clienteId;
@@ -63,6 +72,7 @@ public class Pedido {
 		this.status = PedidoStatus.AGUARDANDO_VALIDACAO;
 		this.dataCriacao = Instant.now();
 		this.pin = "%04d".formatted(RANDOM.nextInt(10000));
+		this.codigoRetirada = "%04d".formatted(RANDOM.nextInt(10000));
 	}
 
 	public Long getId() {
@@ -111,6 +121,26 @@ public class Pedido {
 
 	public String getEntregaId() {
 		return entregaId;
+	}
+
+	public String getCodigoRetirada() {
+		return codigoRetirada;
+	}
+
+	public boolean isEntregaConfirmadaPeloEntregador() {
+		return Boolean.TRUE.equals(entregaConfirmadaPeloEntregador);
+	}
+
+	public boolean isRecebimentoConfirmadoPeloCliente() {
+		return Boolean.TRUE.equals(recebimentoConfirmadoPeloCliente);
+	}
+
+	public void confirmarEntregaPeloEntregador() {
+		this.entregaConfirmadaPeloEntregador = true;
+	}
+
+	public void confirmarRecebimentoPeloCliente() {
+		this.recebimentoConfirmadoPeloCliente = true;
 	}
 
 	public void atribuirEntregador(String entregadorId, String entregaId) {

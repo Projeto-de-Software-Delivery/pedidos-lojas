@@ -70,4 +70,4 @@ json
 "lojaId": "7"
 }
 
-Mesmo acréscimo de clienteId e lojaId do pedido.retirado. Publicado por POST /pedidos/{id}/entregar; no fallback /eventos/pedido-entregue eles são opcionais.
+Mesmo acréscimo de clienteId e lojaId do pedido.retirado. Publicado quando os dois lados confirmam: POST /pedidos/{id}/entregar (entregador, com o PIN) e POST /clientes/{clienteId}/pedidos/{id}/confirmar-recebimento (cliente), em qualquer ordem; no fallback /eventos/pedido-entregue eles são opcionais.

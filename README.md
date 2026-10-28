@@ -79,7 +79,9 @@ não há acesso direto a dados de outro serviço, só via API ou evento.
 | Produto | `/produtos` | CRUD de produtos (vinculados a uma loja), com controle de estoque. |
 | Carrinho | `/clientes/{clienteId}/carrinho` | Adicionar/remover itens do carrinho de um cliente. |
 | Pedido | `/clientes/{clienteId}/pedidos`, `/pedidos/{id}`, `/lojas/{lojaId}/pedidos/...` | Criação, consulta e ciclo de vida do pedido (aceitar/recusar pela loja). |
-| App do entregador | `/pedidos?entregadorId=`, `/pedidos/{id}/retirar`, `/pedidos/{id}/entregar` | Corridas atribuídas ao entregador, confirmação de retirada na loja e finalização com PIN. |
+| App do entregador | `/pedidos?entregadorId=`, `/pedidos/{id}/retirar`, `/pedidos/{id}/entregar` | Corridas atribuídas ao entregador, retirada com o código que a loja mostra e confirmação da entrega com o PIN do cliente. |
+| Confirmação do cliente | `POST /clientes/{clienteId}/pedidos/{id}/confirmar-recebimento` | Cliente confirma que recebeu; o pedido só vira ENTREGUE com as duas confirmações (entregador + cliente). |
+| Painel da loja | `GET /lojas/{lojaId}/pedidos` | Todos os pedidos da loja, com o código de retirada para mostrar ao entregador. |
 | Eventos | `/eventos/*` | Fallback HTTP para aplicar transições de status vindas de outros serviços quando a integração automática não se aplica. |
 
 Lista completa de rotas e contratos: veja a [documentação OpenAPI](#documentação-da-api).
@@ -93,7 +95,7 @@ stateDiagram-v2
     AGUARDANDO_VALIDACAO --> CANCELADO: loja recusa
     VALIDADO --> ENTREGA_ACEITA: entregador atribuído
     ENTREGA_ACEITA --> EM_ENTREGA: retirada na loja
-    EM_ENTREGA --> ENTREGUE: PIN validado
+    EM_ENTREGA --> ENTREGUE: PIN validado + cliente confirmou
     CANCELADO --> [*]
     ENTREGUE --> [*]
 ```
@@ -121,8 +123,8 @@ completo em [`src/main/java/br/insper/delivery/pedido/payloads.md`](src/main/jav
 | `pedido.criado` | Cliente cria um pedido. |
 | `pedido.validado` | Loja aceita o pedido e baixa o estoque. |
 | `entrega.aceita` | Um entregador é atribuído à corrida (automático ou via fallback HTTP). |
-| `pedido.retirado` | Entregador confirma a retirada na loja (`POST /pedidos/{id}/retirar`). |
-| `pedido.entregue` | Entregador finaliza com o PIN do cliente (`POST /pedidos/{id}/entregar`). |
+| `pedido.retirado` | Entregador confirma a retirada na loja com o código de retirada (`POST /pedidos/{id}/retirar`). |
+| `pedido.entregue` | Entregador confirmou com o PIN do cliente (`POST /pedidos/{id}/entregar`) e o cliente confirmou o recebimento (`POST /clientes/{clienteId}/pedidos/{id}/confirmar-recebimento`). |
 
 Todo evento segue o envelope:
 
