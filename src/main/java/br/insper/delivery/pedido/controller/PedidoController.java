@@ -55,14 +55,20 @@ public class PedidoController {
 		return ResponseEntity.ok(pedidoService.listarPorEntregador(entregadorId));
 	}
 
-	/** Entregador pegou o pedido na loja: transiciona pra EM_ENTREGA e publica pedido.retirado. */
+	/**
+	 * Entregador pegou o pedido na loja (com o código de retirada da loja): transiciona pra
+	 * EM_ENTREGA e publica pedido.retirado.
+	 */
 	@PostMapping("/pedidos/{id}/retirar")
 	public ResponseEntity<PedidoResponse> retirar(@PathVariable Long id,
 			@Valid @RequestBody RetirarPedidoRequest request) {
-		return ResponseEntity.ok(pedidoService.retirar(id, request.entregadorId()));
+		return ResponseEntity.ok(pedidoService.retirar(id, request.entregadorId(), request.codigoRetirada()));
 	}
 
-	/** Valida o PIN, transiciona pra ENTREGUE, libera o entregador e publica pedido.entregue. */
+	/**
+	 * Entregador confirma a entrega com o PIN do cliente. Vira ENTREGUE (libera o entregador e
+	 * publica pedido.entregue) quando o cliente também confirmou o recebimento.
+	 */
 	@PostMapping("/pedidos/{id}/entregar")
 	public ResponseEntity<PedidoResponse> entregar(@PathVariable Long id,
 			@Valid @RequestBody EntregarPedidoRequest request) {
@@ -72,6 +78,19 @@ public class PedidoController {
 	@GetMapping("/clientes/{clienteId}/pedidos")
 	public ResponseEntity<List<PedidoResponse>> listarPorCliente(@PathVariable Long clienteId) {
 		return ResponseEntity.ok(pedidoService.listarPorCliente(clienteId));
+	}
+
+	/** Cliente confirma que recebeu; vira ENTREGUE quando o entregador também confirmou com o PIN. */
+	@PostMapping("/clientes/{clienteId}/pedidos/{pedidoId}/confirmar-recebimento")
+	public ResponseEntity<PedidoResponse> confirmarRecebimento(@PathVariable Long clienteId,
+			@PathVariable Long pedidoId) {
+		return ResponseEntity.ok(pedidoService.confirmarRecebimento(clienteId, pedidoId));
+	}
+
+	/** Painel da loja: todos os pedidos dela, em qualquer status. */
+	@GetMapping("/lojas/{lojaId}/pedidos")
+	public ResponseEntity<List<PedidoResponse>> listarPorLoja(@PathVariable Long lojaId) {
+		return ResponseEntity.ok(pedidoService.listarPorLoja(lojaId));
 	}
 
 	/** Painel da loja: pedidos ainda aguardando validação. */

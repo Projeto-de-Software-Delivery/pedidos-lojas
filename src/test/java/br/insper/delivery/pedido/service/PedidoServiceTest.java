@@ -362,7 +362,7 @@ class PedidoServiceTest {
 		when(pedidoRepository.save(pedido)).thenReturn(pedido);
 		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
 
-		PedidoResponse response = pedidoService.retirar(1L, "31");
+		PedidoResponse response = pedidoService.retirar(1L, "31", pedido.getCodigoRetirada());
 
 		assertThat(response.status()).isEqualTo(PedidoStatus.EM_ENTREGA);
 		ArgumentCaptor<PedidoRetiradoEvent> captor = ArgumentCaptor.forClass(PedidoRetiradoEvent.class);
@@ -380,9 +380,23 @@ class PedidoServiceTest {
 		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedidoComEntregaAceita()));
 
 		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
-				ResponseStatusException.class, () -> pedidoService.retirar(1L, "99"));
+				ResponseStatusException.class, () -> pedidoService.retirar(1L, "99", "1234"));
 
 		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+		org.mockito.Mockito.verifyNoInteractions(eventPublisher);
+	}
+
+	@Test
+	void retirarComCodigoErradoDeveLancarUnprocessableENaoAlterarNada() {
+		Pedido pedido = pedidoComEntregaAceita();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+		String codigoErrado = pedido.getCodigoRetirada().equals("0000") ? "1111" : "0000";
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.retirar(1L, "31", codigoErrado));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+		assertThat(pedido.getStatus()).isEqualTo(PedidoStatus.ENTREGA_ACEITA);
 		org.mockito.Mockito.verifyNoInteractions(eventPublisher);
 	}
 
@@ -393,7 +407,7 @@ class PedidoServiceTest {
 		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
 
 		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
-				ResponseStatusException.class, () -> pedidoService.retirar(1L, "31"));
+				ResponseStatusException.class, () -> pedidoService.retirar(1L, "31", pedido.getCodigoRetirada()));
 
 		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 		org.mockito.Mockito.verifyNoInteractions(eventPublisher);
@@ -406,8 +420,73 @@ class PedidoServiceTest {
 	}
 
 	@Test
-	void entregarComPinCorretoDeveFinalizarLiberarEntregadorEPublicarPedidoEntregue() {
+	void entregarComPinCorretoSemConfirmacaoDoClienteDeveEsperarOCliente() {
 		Pedido pedido = pedidoEmEntrega();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+		when(pedidoRepository.save(pedido)).thenReturn(pedido);
+		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
+
+		PedidoResponse response = pedidoService.entregar(1L, "31", pedido.getPin());
+
+		assertThat(response.status()).isEqualTo(PedidoStatus.EM_ENTREGA);
+		assertThat(response.entregaConfirmadaPeloEntregador()).isTrue();
+		assertThat(response.recebimentoConfirmadoPeloCliente()).isFalse();
+		org.mockito.Mockito.verifyNoInteractions(entregadorClient, eventPublisher);
+	}
+
+	@Test
+	void confirmarRecebimentoSemConfirmacaoDoEntregadorDeveEsperarOEntregador() {
+		Pedido pedido = pedidoEmEntrega();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+		when(pedidoRepository.save(pedido)).thenReturn(pedido);
+		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
+
+		PedidoResponse response = pedidoService.confirmarRecebimento(1L, 1L);
+
+		assertThat(response.status()).isEqualTo(PedidoStatus.EM_ENTREGA);
+		assertThat(response.recebimentoConfirmadoPeloCliente()).isTrue();
+		org.mockito.Mockito.verifyNoInteractions(entregadorClient, eventPublisher);
+	}
+
+	@Test
+	void confirmarRecebimentoDeOutroClienteDeveLancarNotFound() {
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedidoEmEntrega()));
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.confirmarRecebimento(99L, 1L));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+	}
+
+	@Test
+	void confirmarRecebimentoForaDeEmEntregaDeveLancarConflito() {
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedidoComEntregaAceita()));
+
+		ResponseStatusException exception = org.junit.jupiter.api.Assertions.assertThrows(
+				ResponseStatusException.class, () -> pedidoService.confirmarRecebimento(1L, 1L));
+
+		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+	}
+
+	@Test
+	void clienteConfirmaDepoisDoEntregadorDeveFinalizar() {
+		Pedido pedido = pedidoEmEntrega();
+		pedido.confirmarEntregaPeloEntregador();
+		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
+		when(pedidoRepository.save(pedido)).thenReturn(pedido);
+		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
+
+		PedidoResponse response = pedidoService.confirmarRecebimento(1L, 1L);
+
+		assertThat(response.status()).isEqualTo(PedidoStatus.ENTREGUE);
+		verify(entregadorClient).atualizarStatus("31", "DISPONIVEL");
+		verify(eventPublisher).publishEvent(any(PedidoEntregueEvent.class));
+	}
+
+	@Test
+	void entregarComPinCorretoDepoisDoClienteDeveFinalizarLiberarEntregadorEPublicarPedidoEntregue() {
+		Pedido pedido = pedidoEmEntrega();
+		pedido.confirmarRecebimentoPeloCliente();
 		when(pedidoRepository.findById(1L)).thenReturn(Optional.of(pedido));
 		when(pedidoRepository.save(pedido)).thenReturn(pedido);
 		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
@@ -460,6 +539,19 @@ class PedidoServiceTest {
 				ResponseStatusException.class, () -> pedidoService.entregar(1L, "99", pedido.getPin()));
 
 		assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+	}
+
+	@Test
+	void listarPorLojaDeveRetornarTodosOsPedidosDaLoja() {
+		when(lojaService.buscarPorId(2L)).thenReturn(LOJA);
+		Pedido pedido = pedidoComEntregaAceita();
+		when(pedidoRepository.findByLojaId(2L)).thenReturn(List.of(pedido));
+		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of());
+
+		List<PedidoResponse> response = pedidoService.listarPorLoja(2L);
+
+		assertThat(response).hasSize(1);
+		assertThat(response.get(0).codigoRetirada()).matches("\\d{4}");
 	}
 
 	@Test
