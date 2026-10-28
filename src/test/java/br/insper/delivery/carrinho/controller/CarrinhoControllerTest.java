@@ -2,6 +2,7 @@ package br.insper.delivery.carrinho.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -162,6 +163,40 @@ class CarrinhoControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.itens").isEmpty())
 				.andExpect(jsonPath("$.total").value(0));
+	}
+
+	@Test
+	void adicionarItemAcimaDoEstoqueRetorna422() throws Exception {
+		Long clienteId = criarCliente();
+		Long produtoId = criarProduto("10.00");
+
+		mockMvc.perform(post("/clientes/" + clienteId + "/carrinho/itens")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"produtoId\":" + produtoId + ",\"quantidade\":101}"))
+				.andExpect(status().isUnprocessableContent());
+	}
+
+	@Test
+	void alterarQuantidadeRetorna200EAtualizaTotal() throws Exception {
+		Long clienteId = criarCliente();
+		Long produtoId = criarProduto("10.00");
+		MvcResult adicionado = mockMvc
+				.perform(post("/clientes/" + clienteId + "/carrinho/itens")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"produtoId\":" + produtoId + ",\"quantidade\":2}"))
+				.andExpect(status().isCreated())
+				.andReturn();
+		Matcher matcher = Pattern.compile("\"itens\":\\[\\{\"id\":(\\d+)")
+				.matcher(adicionado.getResponse().getContentAsString());
+		matcher.find();
+		Long itemId = Long.valueOf(matcher.group(1));
+
+		mockMvc.perform(patch("/clientes/" + clienteId + "/carrinho/itens/" + itemId)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"quantidade\":5}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.itens[0].quantidade").value(5))
+				.andExpect(jsonPath("$.total").value(50.0));
 	}
 
 	@Test

@@ -65,4 +65,9 @@ public class ItemCarrinho {
 		this.precoUnitario = precoUnitario;
 	}
 
+	public void alterarQuantidade(Integer quantidade, BigDecimal precoUnitario) {
+		this.quantidade = quantidade;
+		this.precoUnitario = precoUnitario;
+	}
+
 }

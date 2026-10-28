@@ -2,6 +2,7 @@ package br.insper.delivery.carrinho.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,6 +74,65 @@ class CarrinhoServiceTest {
 
 		assertThat(existente.getQuantidade()).isEqualTo(5);
 		assertThat(response.total()).isEqualByComparingTo("50.00");
+	}
+
+	@Test
+	void adicionarItemAcimaDoEstoqueDeveLancar422() {
+		when(clienteService.buscarPorId(1L)).thenReturn(CLIENTE);
+		Produto produto = new Produto(7L, "Bolo", "Sobremesas", new BigDecimal("10.00"), 2, "foto.png");
+		when(produtoService.buscarPorId(2L)).thenReturn(produto);
+		when(itemCarrinhoRepository.findByClienteIdAndProdutoId(1L, 2L)).thenReturn(Optional.empty());
+
+		ResponseStatusException e = org.junit.jupiter.api.Assertions.assertThrows(ResponseStatusException.class,
+				() -> carrinhoService.adicionarItem(1L, new ItemCarrinhoRequest(2L, 3)));
+
+		assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+		verify(itemCarrinhoRepository, never()).save(any(ItemCarrinho.class));
+	}
+
+	@Test
+	void adicionarItemExistenteQueSomadoPassaDoEstoqueDeveLancar422() {
+		when(clienteService.buscarPorId(1L)).thenReturn(CLIENTE);
+		Produto produto = new Produto(7L, "Bolo", "Sobremesas", new BigDecimal("10.00"), 4, "foto.png");
+		when(produtoService.buscarPorId(2L)).thenReturn(produto);
+		ItemCarrinho existente = new ItemCarrinho(1L, 2L, 3, new BigDecimal("10.00"));
+		when(itemCarrinhoRepository.findByClienteIdAndProdutoId(1L, 2L)).thenReturn(Optional.of(existente));
+
+		org.junit.jupiter.api.Assertions.assertThrows(ResponseStatusException.class,
+				() -> carrinhoService.adicionarItem(1L, new ItemCarrinhoRequest(2L, 2)));
+
+		assertThat(existente.getQuantidade()).isEqualTo(3);
+	}
+
+	@Test
+	void alterarQuantidadeDeveTrocarQuantidadeEPreco() {
+		when(clienteService.buscarPorId(1L)).thenReturn(CLIENTE);
+		ItemCarrinho item = new ItemCarrinho(1L, 2L, 3, new BigDecimal("10.00"));
+		when(itemCarrinhoRepository.findById(5L)).thenReturn(Optional.of(item));
+		Produto produto = new Produto(7L, "Bolo", "Sobremesas", new BigDecimal("12.00"), 10, "foto.png");
+		when(produtoService.buscarPorId(2L)).thenReturn(produto);
+		when(itemCarrinhoRepository.findByClienteId(1L)).thenReturn(List.of(item));
+
+		CarrinhoResponse response = carrinhoService.alterarQuantidade(1L, 5L, 1);
+
+		assertThat(item.getQuantidade()).isEqualTo(1);
+		assertThat(response.total()).isEqualByComparingTo("12.00");
+		verify(itemCarrinhoRepository).save(item);
+	}
+
+	@Test
+	void alterarQuantidadeAcimaDoEstoqueDeveLancar422() {
+		when(clienteService.buscarPorId(1L)).thenReturn(CLIENTE);
+		ItemCarrinho item = new ItemCarrinho(1L, 2L, 1, new BigDecimal("10.00"));
+		when(itemCarrinhoRepository.findById(5L)).thenReturn(Optional.of(item));
+		Produto produto = new Produto(7L, "Bolo", "Sobremesas", new BigDecimal("10.00"), 2, "foto.png");
+		when(produtoService.buscarPorId(2L)).thenReturn(produto);
+
+		ResponseStatusException e = org.junit.jupiter.api.Assertions.assertThrows(ResponseStatusException.class,
+				() -> carrinhoService.alterarQuantidade(1L, 5L, 3));
+
+		assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+		assertThat(item.getQuantidade()).isEqualTo(1);
 	}
 
 	@Test
