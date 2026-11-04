@@ -87,6 +87,19 @@ não há acesso direto a dados de outro serviço, só via API ou evento.
 
 Lista completa de rotas e contratos: veja a [documentação OpenAPI](#documentação-da-api).
 
+### Autorização (Auth0)
+
+O gateway valida o access token do Auth0 e o repassa no header `Authorization`.
+Aqui o `sub` do token identifica o usuário, e cada cliente e cada loja guardam
+o `sub` de quem os criou (`auth0_sub`). Só o dono opera os próprios recursos;
+outro usuário, ou uma requisição sem token, recebe **403**:
+
+- **Cliente**: dados do cliente, carrinho, endereços, criar e listar pedidos, confirmar recebimento.
+- **Loja**: dados da loja, listar pedidos, aceitar e recusar pedido, cadastrar, alterar e excluir produtos.
+
+O catálogo (`GET /lojas`, `GET /produtos`) continua aberto. Registros antigos
+sem `auth0_sub` (criados antes do login) seguem acessíveis a todos.
+
 ## Máquina de estados do pedido
 
 ```mermaid

@@ -42,6 +42,7 @@ public class CarrinhoService {
 	 * unitário para o preço atual do produto. A quantidade total não pode passar do estoque (422).
 	 */
 	public CarrinhoResponse adicionarItem(Long clienteId, ItemCarrinhoRequest request) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		Produto produto = produtoService.buscarPorId(request.produtoId());
 
@@ -64,6 +65,7 @@ public class CarrinhoService {
 
 	/** Troca a quantidade do item (não soma); não pode passar do estoque (422). */
 	public CarrinhoResponse alterarQuantidade(Long clienteId, Long itemId, Integer quantidade) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		ItemCarrinho item = buscarItem(clienteId, itemId);
 		Produto produto = produtoService.buscarPorId(item.getProdutoId());
@@ -77,6 +79,7 @@ public class CarrinhoService {
 	}
 
 	public CarrinhoResponse removerItem(Long clienteId, Long itemId) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		ItemCarrinho item = buscarItem(clienteId, itemId);
 
@@ -86,6 +89,7 @@ public class CarrinhoService {
 	}
 
 	public CarrinhoResponse buscarCarrinho(Long clienteId) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		return montarCarrinho(clienteId);
 	}

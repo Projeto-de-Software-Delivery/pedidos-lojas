@@ -30,6 +30,7 @@ public class EnderecoService {
 	}
 
 	public Endereco criar(Long clienteId, EnderecoRequest request) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		Endereco endereco = new Endereco(clienteId, request.cep(), request.logradouro(), request.numero(),
 				request.complemento(), request.bairro(), request.cidade(), request.estado());
@@ -39,6 +40,7 @@ public class EnderecoService {
 	}
 
 	public List<Endereco> listarPorCliente(Long clienteId) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		return enderecoRepository.findByClienteId(clienteId);
 	}
@@ -47,6 +49,7 @@ public class EnderecoService {
 	 * 404 tanto se o endereço não existir quanto se existir mas for de outro cliente.
 	 */
 	public Endereco buscarPorId(Long clienteId, Long id) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		Endereco endereco = enderecoRepository.findById(id)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Endereço não encontrado"));
