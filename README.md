@@ -220,7 +220,9 @@ Com a aplicação rodando:
 ./mvnw test
 ```
 
-Gera o relatório de cobertura JaCoCo em `target/site/jacoco/index.html`. Os
+Gera o relatório de cobertura JaCoCo em `target/site/jacoco/index.html` e
+**falha o build se a cobertura de linhas ficar abaixo de 80%** (`jacoco:check`
+na fase `test`), o que também barra o deploy no CI/CD. Os
 testes usam H2 em memória (sem necessidade de subir Postgres/RabbitMQ) —
 chamadas a serviços externos (ex.: o serviço de entregador) são tratadas como
 *best-effort* e não quebram a suíte quando o serviço não está disponível.
