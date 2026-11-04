@@ -93,4 +93,6 @@ jobs:
               -e RABBITMQ_USER=guest \
               -e RABBITMQ_PASSWORD=guest \
               -e ENTREGADOR_SERVICE_URL=http://3.239.184.234:8081 \
+              -e AUTH0_DOMAIN='${{ secrets.AUTH0_DOMAIN }}' \
+              -e AUTH0_AUDIENCE='${{ secrets.AUTH0_AUDIENCE }}' \
               emilybrtt/delivery:${{ github.sha }}
