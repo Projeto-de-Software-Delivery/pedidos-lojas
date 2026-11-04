@@ -88,13 +88,14 @@ class LojaControllerAuthTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.nome").value("Sorveteria"));
 
-		// Outro usuário recebe 403 Forbidden
+		// Outro usuário (ex.: um cliente) pode ler a loja, mas não alterar/excluir
 		String subOutro = "auth0|outro_lojista_" + System.currentTimeMillis();
 		String tokenOutro = TestJwtHelper.createToken(subOutro, "outro_lojista@teste.com");
 
 		mockMvc.perform(get("/lojas/" + lojaId)
 				.header("Authorization", "Bearer " + tokenOutro))
-				.andExpect(status().isForbidden());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.nome").value("Sorveteria"));
 
 		mockMvc.perform(put("/lojas/" + lojaId)
 				.header("Authorization", "Bearer " + tokenOutro)
