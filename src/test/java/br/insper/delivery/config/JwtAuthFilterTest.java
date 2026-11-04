@@ -7,10 +7,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import javax.crypto.spec.SecretKeySpec;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 import br.insper.delivery.TestJwtHelper;
 import jakarta.servlet.FilterChain;
@@ -23,7 +27,8 @@ class JwtAuthFilterTest {
 
 	@BeforeEach
 	void setUp() {
-		filter = new JwtAuthFilter();
+		JwtDecoder decoder = NimbusJwtDecoder.withSecretKey(TestJwtHelper.secretKey()).build();
+		filter = new JwtAuthFilter(decoder);
 		SecurityContextHolder.clearContext();
 	}
 
@@ -43,12 +48,21 @@ class JwtAuthFilterTest {
 	}
 
 	@Test
-	void parseTokenComTokenSimplificadoRetornaSub() {
-		Auth0User user = filter.parseToken("auth0|999");
+	void parseTokenComAssinaturaInvalidaRetornaNull() {
+		// mesmo payload, mas assinado com uma chave diferente da que o decoder espera
+		JwtDecoder decoderComOutraChave = NimbusJwtDecoder.withSecretKey(
+				new SecretKeySpec("outra-chave-completamente-diferente-da-esperada".getBytes(), "HmacSHA256")).build();
+		JwtAuthFilter filterComOutroDecoder = new JwtAuthFilter(decoderComOutraChave);
 
-		assertNotNull(user);
-		assertEquals("auth0|999", user.sub());
-		assertNull(user.email());
+		String token = TestJwtHelper.createToken("auth0|forjado", "forjado@teste.com");
+
+		assertNull(filterComOutroDecoder.parseToken(token));
+	}
+
+	@Test
+	void parseTokenComTokenNaoJwtRetornaNull() {
+		assertNull(filter.parseToken("auth0|999"));
+		assertNull(filter.parseToken("nao-e-um-jwt"));
 	}
 
 	@Test
@@ -83,6 +97,20 @@ class JwtAuthFilterTest {
 		FilterChain chain = mock(FilterChain.class);
 
 		when(request.getHeader("Authorization")).thenReturn(null);
+
+		filter.doFilterInternal(request, response, chain);
+
+		verify(chain).doFilter(request, response);
+		assertNull(SecurityContextHolder.getContext().getAuthentication());
+	}
+
+	@Test
+	void doFilterInternalComTokenForjadoPassaDiretoSemAutenticar() throws Exception {
+		HttpServletRequest request = mock(HttpServletRequest.class);
+		HttpServletResponse response = mock(HttpServletResponse.class);
+		FilterChain chain = mock(FilterChain.class);
+
+		when(request.getHeader("Authorization")).thenReturn("Bearer auth0|tentativa-de-bypass");
 
 		filter.doFilterInternal(request, response, chain);
 
