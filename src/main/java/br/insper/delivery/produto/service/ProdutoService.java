@@ -31,7 +31,9 @@ public class ProdutoService {
 		this.lojaService = lojaService;
 	}
 
+	/** Só a loja dona (ou loja legada sem dono) cadastra, altera e exclui seus produtos. */
 	public Produto criar(ProdutoRequest request) {
+		lojaService.validarAcesso(request.lojaId());
 		lojaService.buscarPorId(request.lojaId());
 		Produto produto = new Produto(request.lojaId(), request.nome(), request.categoria(), request.preco(),
 				request.estoque(), request.foto());
@@ -59,6 +61,7 @@ public class ProdutoService {
 	 */
 	public Produto atualizar(Long id, ProdutoRequest request) {
 		Produto produto = buscarPorId(id);
+		lojaService.validarAcesso(produto.getLojaId());
 		if (!produto.getLojaId().equals(request.lojaId())) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
 					"Não é possível mover um produto para outra loja");
@@ -69,6 +72,7 @@ public class ProdutoService {
 
 	public void deletar(Long id) {
 		Produto produto = buscarPorId(id);
+		lojaService.validarAcesso(produto.getLojaId());
 		produtoRepository.delete(produto);
 	}
 

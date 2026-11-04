@@ -84,6 +84,7 @@ public class PedidoService {
 
 	/** Status inicial AGUARDANDO_VALIDACAO; publica pedido.criado. */
 	public PedidoResponse criar(Long clienteId, CriarPedidoRequest request) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		lojaService.buscarPorId(request.lojaId());
 
@@ -217,6 +218,7 @@ public class PedidoService {
 	 * (com o PIN); senão o pedido fica em EM_ENTREGA esperando o entregador.
 	 */
 	public PedidoResponse confirmarRecebimento(Long clienteId, Long pedidoId) {
+		clienteService.validarAcesso(clienteId);
 		Pedido pedido = buscarEntidade(pedidoId);
 		if (!pedido.getClienteId().equals(clienteId)) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido não encontrado para este cliente");
@@ -254,6 +256,7 @@ public class PedidoService {
 	}
 
 	public List<PedidoResponse> listarPorCliente(Long clienteId) {
+		clienteService.validarAcesso(clienteId);
 		clienteService.buscarPorId(clienteId);
 		return pedidoRepository.findByClienteId(clienteId).stream()
 				.map(pedido -> paraResponse(pedido, itemPedidoRepository.findByPedidoId(pedido.getId())))
@@ -268,6 +271,7 @@ public class PedidoService {
 	}
 
 	public List<PedidoResponse> listarPendentesPorLoja(Long lojaId) {
+		lojaService.validarAcesso(lojaId);
 		lojaService.buscarPorId(lojaId);
 		return pedidoRepository.findByLojaIdAndStatus(lojaId, PedidoStatus.AGUARDANDO_VALIDACAO).stream()
 				.map(pedido -> paraResponse(pedido, itemPedidoRepository.findByPedidoId(pedido.getId())))
@@ -276,6 +280,7 @@ public class PedidoService {
 
 	/** Painel da loja: todos os pedidos dela (em andamento mostram o código de retirada). */
 	public List<PedidoResponse> listarPorLoja(Long lojaId) {
+		lojaService.validarAcesso(lojaId);
 		lojaService.buscarPorId(lojaId);
 		return pedidoRepository.findByLojaId(lojaId).stream()
 				.map(pedido -> paraResponse(pedido, itemPedidoRepository.findByPedidoId(pedido.getId())))
@@ -289,6 +294,7 @@ public class PedidoService {
 	 */
 	@Transactional
 	public PedidoResponse aceitar(Long lojaId, Long pedidoId, AceitarPedidoRequest request) {
+		lojaService.validarAcesso(lojaId);
 		lojaService.buscarPorId(lojaId);
 		Pedido pedido = buscarEntidadeDaLoja(lojaId, pedidoId);
 		if (pedido.getStatus() != PedidoStatus.AGUARDANDO_VALIDACAO) {
@@ -342,6 +348,7 @@ public class PedidoService {
 
 	/** Nenhum estoque é alterado — ele só é baixado na aceitação, nunca antes. */
 	public PedidoResponse recusar(Long lojaId, Long pedidoId) {
+		lojaService.validarAcesso(lojaId);
 		lojaService.buscarPorId(lojaId);
 		Pedido pedido = buscarEntidadeDaLoja(lojaId, pedidoId);
 		try {
