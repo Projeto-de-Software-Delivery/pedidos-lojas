@@ -1,7 +1,6 @@
 package br.insper.delivery.entregador;
 
 import java.util.List;
-import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,8 +12,8 @@ import org.springframework.web.client.RestClientException;
 
 /**
  * Cliente HTTP do serviço de entregador. O serviço só expõe CRUD + status (sem fila nem endpoint
- * de oferta de corrida), então a atribuição é feita por polling síncrono: busca o primeiro
- * DISPONIVEL e marca como EM_ENTREGA.
+ * de oferta de corrida), então a atribuição é feita por chamada síncrona: lista os DISPONIVEL
+ * e marca o escolhido como EM_ENTREGA.
  */
 @Service
 public class EntregadorClient {
@@ -28,8 +27,12 @@ public class EntregadorClient {
 		this.restClient = RestClient.create(baseUrl);
 	}
 
-	/** Best-effort: uma indisponibilidade do serviço de entregador não deve falhar o pedido. */
-	public Optional<EntregadorDados> buscarDisponivel() {
+	/**
+	 * Todos os entregadores com status DISPONIVEL; qual deles recebe a corrida é decidido pela
+	 * {@code EscolhaEntregadorStrategy}. Best-effort: uma indisponibilidade do serviço de
+	 * entregador devolve lista vazia em vez de falhar o pedido.
+	 */
+	public List<EntregadorDados> listarDisponiveis() {
 		try {
 			List<EntregadorDados> entregadores = restClient.get()
 					.uri("/entregadores")
@@ -38,10 +41,10 @@ public class EntregadorClient {
 					});
 			return (entregadores == null ? List.<EntregadorDados>of() : entregadores).stream()
 					.filter(entregador -> STATUS_DISPONIVEL.equals(entregador.status()))
-					.findFirst();
+					.toList();
 		} catch (RestClientException e) {
 			log.error("Falha ao consultar entregadores disponíveis", e);
-			return Optional.empty();
+			return List.of();
 		}
 	}
 

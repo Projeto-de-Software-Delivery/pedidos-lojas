@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import br.insper.delivery.cliente.service.ClienteService;
 import br.insper.delivery.entregador.EntregadorClient;
 import br.insper.delivery.entregador.EntregadorDados;
+import br.insper.delivery.entregador.escolha.EscolhaEntregadorStrategy;
 import br.insper.delivery.loja.service.LojaService;
 import br.insper.delivery.pedido.domain.ItemPedido;
 import br.insper.delivery.pedido.domain.Pedido;
@@ -69,10 +70,12 @@ public class PedidoService {
 	private final ProdutoService produtoService;
 	private final EntregadorClient entregadorClient;
 	private final ApplicationEventPublisher eventPublisher;
+	private final EscolhaEntregadorStrategy escolhaEntregador;
 
 	public PedidoService(PedidoRepository pedidoRepository, ItemPedidoRepository itemPedidoRepository,
 			ClienteService clienteService, LojaService lojaService, ProdutoService produtoService,
-			EntregadorClient entregadorClient, ApplicationEventPublisher eventPublisher) {
+			EntregadorClient entregadorClient, ApplicationEventPublisher eventPublisher,
+			EscolhaEntregadorStrategy escolhaEntregador) {
 		this.pedidoRepository = pedidoRepository;
 		this.itemPedidoRepository = itemPedidoRepository;
 		this.clienteService = clienteService;
@@ -80,6 +83,7 @@ public class PedidoService {
 		this.produtoService = produtoService;
 		this.entregadorClient = entregadorClient;
 		this.eventPublisher = eventPublisher;
+		this.escolhaEntregador = escolhaEntregador;
 	}
 
 	/** Status inicial AGUARDANDO_VALIDACAO; publica pedido.criado. */
@@ -323,10 +327,11 @@ public class PedidoService {
 
 	/**
 	 * Serviço de entregador só tem CRUD + status (sem fila nem endpoint de oferta), então a
-	 * "oferta de corrida" vira uma atribuição direta: pega o primeiro DISPONIVEL e marca ocupado.
+	 * "oferta de corrida" vira uma atribuição direta: a {@link EscolhaEntregadorStrategy} configurada
+	 * escolhe um dos DISPONIVEL e ele é marcado como ocupado.
 	 */
 	private void atribuirEntregadorDisponivel(Pedido pedido) {
-		Optional<EntregadorDados> entregador = entregadorClient.buscarDisponivel();
+		Optional<EntregadorDados> entregador = escolhaEntregador.escolher(entregadorClient.listarDisponiveis());
 		if (entregador.isEmpty()) {
 			log.warn("Nenhum entregador disponível para o pedido {} no momento da aceitação", pedido.getId());
 			return;
