@@ -48,9 +48,9 @@ public class LojaController {
 		return ResponseEntity.ok(response);
 	}
 
+	/** Leitura aberta: o cliente precisa ver a loja para navegar pelo catálogo. Só escrita exige ser o dono. */
 	@GetMapping("/{id}")
 	public ResponseEntity<LojaResponse> buscarPorId(@PathVariable Long id) {
-		lojaService.validarAcesso(id);
 		return ResponseEntity.ok(LojaResponse.from(lojaService.buscarPorId(id)));
 	}
 
