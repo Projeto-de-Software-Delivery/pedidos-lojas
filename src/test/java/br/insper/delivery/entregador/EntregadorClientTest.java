@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.Optional;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -40,28 +40,28 @@ class EntregadorClientTest {
 	}
 
 	@Test
-	void buscarDisponivelRetornaOPrimeiroComStatusDisponivel() throws IOException {
+	void listarDisponiveisRetornaSoOsComStatusDisponivel() throws IOException {
 		subirServicoFalso("[{\"id\":\"1\",\"nome\":\"Ana\",\"veiculo\":\"CARRO\",\"status\":\"EM_ENTREGA\"},"
 				+ "{\"id\":\"2\",\"nome\":\"João\",\"veiculo\":\"MOTO\",\"status\":\"DISPONIVEL\"}]");
 
-		Optional<EntregadorDados> resultado = client.buscarDisponivel();
+		List<EntregadorDados> resultado = client.listarDisponiveis();
 
-		assertThat(resultado).isPresent();
-		assertThat(resultado.get().id()).isEqualTo("2");
+		assertThat(resultado).hasSize(1);
+		assertThat(resultado.get(0).id()).isEqualTo("2");
 	}
 
 	@Test
-	void buscarDisponivelRetornaVazioQuandoNenhumDisponivel() throws IOException {
+	void listarDisponiveisRetornaVazioQuandoNenhumDisponivel() throws IOException {
 		subirServicoFalso("[{\"id\":\"1\",\"nome\":\"Ana\",\"veiculo\":\"CARRO\",\"status\":\"EM_ENTREGA\"}]");
 
-		assertThat(client.buscarDisponivel()).isEmpty();
+		assertThat(client.listarDisponiveis()).isEmpty();
 	}
 
 	@Test
-	void buscarDisponivelRetornaVazioQuandoServicoIndisponivel() {
+	void listarDisponiveisRetornaVazioQuandoServicoIndisponivel() {
 		client = new EntregadorClient("http://localhost:1");
 
-		assertThat(client.buscarDisponivel()).isEmpty();
+		assertThat(client.listarDisponiveis()).isEmpty();
 	}
 
 	@Test

@@ -21,6 +21,7 @@ demais serviços via RabbitMQ.
 - [Domínios deste serviço](#domínios-deste-serviço)
 - [Máquina de estados do pedido](#máquina-de-estados-do-pedido)
 - [Eventos publicados (RabbitMQ)](#eventos-publicados-rabbitmq)
+- [Padrões de projeto](#padrões-de-projeto)
 - [Stack técnica](#stack-técnica)
 - [Como rodar localmente](#como-rodar-localmente)
 - [Variáveis de ambiente](#variáveis-de-ambiente)
@@ -143,6 +144,14 @@ A publicação é *best-effort*: uma falha momentânea do broker é logada, mas
 não derruba a operação de negócio que já foi concluída (ex.: o pedido já foi
 validado e o estoque já foi baixado antes de tentar publicar).
 
+## Padrões de projeto
+
+| Padrão | Onde | Para quê |
+|---|---|---|
+| **Strategy** | [`entregador/escolha/EscolhaEntregadorStrategy`](src/main/java/br/insper/delivery/entregador/escolha/EscolhaEntregadorStrategy.java) e implementações `PrimeiroDisponivelStrategy`, `AleatorioStrategy`, `VeiculoPreferidoStrategy` | Regra de qual entregador recebe a corrida na aceitação do pedido. O `PedidoService` só conhece a interface; trocar a regra não mexe nele. |
+| **Factory** | [`EscolhaEntregadorStrategyFactory`](src/main/java/br/insper/delivery/entregador/escolha/EscolhaEntregadorStrategyFactory.java) | Cria a estratégia a partir do nome configurado em `entregador.escolha.estrategia` (`ENTREGADOR_ESCOLHA_ESTRATEGIA`) e rejeita nomes inválidos na subida da aplicação. |
+| **Singleton** | [`EscolhaEntregadorConfig`](src/main/java/br/insper/delivery/entregador/escolha/EscolhaEntregadorConfig.java) (`@Scope(SCOPE_SINGLETON)`) e os `@Service`/`@Component` do Spring | Uma única instância da estratégia (e de cada serviço) é criada pelo container e compartilhada por todas as requisições — seguro porque as classes não guardam estado por requisição. |
+
 ## Stack técnica
 
 - **Java 25** + **Spring Boot 4.1.1**
@@ -206,6 +215,7 @@ ninguém disponível e o pedido fica em `VALIDADO`.
 | `RABBITMQ_USER` | `guest` | Usuário do RabbitMQ. |
 | `RABBITMQ_PASSWORD` | `guest` | Senha do RabbitMQ. |
 | `ENTREGADOR_SERVICE_URL` | `http://localhost:8081` | Base URL do serviço de entregador. |
+| `ENTREGADOR_ESCOLHA_ESTRATEGIA` | `primeiro-disponivel` | Strategy de escolha do entregador: `primeiro-disponivel`, `aleatorio` ou `preferir-moto`. |
 
 ## Documentação da API
 

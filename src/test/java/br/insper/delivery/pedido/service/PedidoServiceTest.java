@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,8 @@ import br.insper.delivery.cliente.domain.Cliente;
 import br.insper.delivery.cliente.service.ClienteService;
 import br.insper.delivery.entregador.EntregadorClient;
 import br.insper.delivery.entregador.EntregadorDados;
+import br.insper.delivery.entregador.escolha.EscolhaEntregadorStrategy;
+import br.insper.delivery.entregador.escolha.PrimeiroDisponivelStrategy;
 import br.insper.delivery.loja.domain.Loja;
 import br.insper.delivery.loja.service.LojaService;
 import br.insper.delivery.pedido.domain.ItemPedido;
@@ -73,6 +76,9 @@ class PedidoServiceTest {
 
 	@Mock
 	private ApplicationEventPublisher eventPublisher;
+
+	@Spy
+	private EscolhaEntregadorStrategy escolhaEntregador = new PrimeiroDisponivelStrategy();
 
 	@InjectMocks
 	private PedidoService pedidoService;
@@ -653,7 +659,7 @@ class PedidoServiceTest {
 		ItemPedido item = new ItemPedido(1L, 9L, 2, new BigDecimal("15.90"));
 		when(itemPedidoRepository.findByPedidoId(pedido.getId())).thenReturn(List.of(item));
 		EntregadorDados disponivel = new EntregadorDados("31", "João", "MOTO", "DISPONIVEL");
-		when(entregadorClient.buscarDisponivel()).thenReturn(Optional.of(disponivel));
+		when(entregadorClient.listarDisponiveis()).thenReturn(List.of(disponivel));
 
 		PedidoResponse response = pedidoService.aceitar(2L, 1L, aceitarPedidoRequestPadrao());
 
